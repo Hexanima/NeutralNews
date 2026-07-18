@@ -2,34 +2,39 @@ import { describe, expect, it } from "vitest";
 
 import { and, fieldFilter, FilterOperators, or } from "./service.js";
 
-interface User {
+interface NewsSourceFixture {
   id: string;
   name: string;
-  age: number;
+  country: "AR" | "UY";
+  active: boolean;
 }
 
 describe("filters", () => {
   it("creates a discriminated field filter", () => {
-    const filter = fieldFilter<User, "age">("age", FilterOperators.Gte, 18);
+    const filter = fieldFilter<NewsSourceFixture, "country">(
+      "country",
+      FilterOperators.Eq,
+      "AR",
+    );
 
     expect(filter).toEqual({
       type: "field",
-      field: "age",
-      operator: "Gte",
-      value: 18,
+      field: "country",
+      operator: "Eq",
+      value: "AR",
     });
   });
 
   it("creates discriminated boolean filter groups", () => {
-    const activeAdults = and<User>(
-      fieldFilter("age", FilterOperators.Gte, 18),
-      or<User>(
-        fieldFilter("name", FilterOperators.Contains, "admin"),
-        fieldFilter("id", FilterOperators.Eq, "root"),
+    const activeArgentineSources = and<NewsSourceFixture>(
+      fieldFilter("active", FilterOperators.Eq, true),
+      or<NewsSourceFixture>(
+        fieldFilter("country", FilterOperators.Eq, "AR"),
+        fieldFilter("name", FilterOperators.Contains, "Argentina"),
       ),
     );
 
-    expect(activeAdults.type).toBe("and");
-    expect(activeAdults.filters[1].type).toBe("or");
+    expect(activeArgentineSources.type).toBe("and");
+    expect(activeArgentineSources.filters[1].type).toBe("or");
   });
 });

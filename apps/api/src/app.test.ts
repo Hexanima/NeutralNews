@@ -7,7 +7,7 @@ describe("api app", () => {
     const response = await createHealthResponse();
 
     expect(response).toEqual({
-      app: "clean-architecture-template",
+      app: "neutral-news",
       domain: "ready",
     });
   });

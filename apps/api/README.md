@@ -1,10 +1,10 @@
 # api
 
-Node HTTP API for the Clean Architecture template.
+API HTTP local de Node para NeutralNews.
 
-The `/health` endpoint composes a response from the domain use case exported by `app-domain`.
+El endpoint `/health` compone una respuesta desde el caso de uso de readiness exportado por `app-domain`. Las futuras integraciones de persistencia, credenciales, RSS, extraccion y proveedores de IA viven en este workspace como adaptadores de infraestructura.
 
-## Commands
+## Comandos
 
 - `yarn workspace api dev`
 - `yarn workspace api test --run`

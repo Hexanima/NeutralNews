@@ -1,21 +1,25 @@
-# clean-architecture-template
+# NeutralNews
 
-TypeScript monorepo template for Clean Architecture projects.
+Aplicacion personal y local para consumir noticias politicas con encuadres contrastados. La base mantiene una arquitectura limpia para que el dominio editorial no dependa de frameworks, HTTP, React ni proveedores externos.
 
 ## Workspaces
 
-- `domain`: framework-independent domain model, result contracts, use cases, and ports.
-- `apps/api`: Node HTTP adapter that composes domain use cases.
-- `apps/web`: React/Vite adapter that consumes the domain package.
+- `domain`: modelo de dominio independiente, contratos `Result`, errores, casos de uso y futuros puertos.
+- `apps/api`: adaptador HTTP local de Node que compone casos de uso del dominio.
+- `apps/web`: interfaz React/Vite que consume contratos compartidos desde `app-domain`.
 
-## Rules
+## Reglas
 
-- Dependencies point inward: apps may depend on `app-domain`; `domain` must not depend on apps.
-- Domain results use the discriminated `Result` contract.
-- Tests must exist; `passWithNoTests` is disabled.
+- Las dependencias apuntan hacia adentro: `apps/*` puede depender de `app-domain`; `domain` no depende de `apps/*`.
+- El dominio conserva el contrato discriminado `Result`.
+- La UI no consume SDKs de proveedores ni resuelve credenciales.
+- Los mecanismos de prueba existentes se conservan; `passWithNoTests` esta deshabilitado.
 
-## Commands
+## Comandos
 
+- `yarn workspace app-domain test --run`
+- `yarn workspace api test --run`
+- `yarn workspace web test --run`
 - `yarn test`
 - `yarn build`
 - `yarn workspace api dev`
