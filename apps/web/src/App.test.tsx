@@ -4,11 +4,12 @@ import { describe, expect, it } from "vitest";
 import App from "./App.js";
 
 describe("App", () => {
-  it("renders the clean architecture template screen", () => {
+  it("renders the NeutralNews foundation screen", () => {
     const markup = renderToStaticMarkup(<App />);
 
-    expect(markup).toContain("Clean Architecture Template");
+    expect(markup).toContain("NeutralNews");
     expect(markup).toContain("Domain layer: ready");
-    expect(markup).not.toContain("Vite + React");
+    expect(markup).not.toMatch(/Clean Architecture\s+Template/);
+    expect(markup).not.toMatch(/Vite\s+\+\s+React/);
   });
 });

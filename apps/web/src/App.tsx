@@ -7,19 +7,19 @@ function App() {
   return (
     <main className="app-shell">
       <section className="status-panel">
-        <p className="eyebrow">TypeScript monorepo</p>
-        <h1>Clean Architecture Template</h1>
+        <p className="eyebrow">Aplicacion local de noticias politicas</p>
+        <h1>NeutralNews</h1>
         <dl>
           <div>
-            <dt>Domain layer</dt>
+            <dt>Capa de dominio</dt>
             <dd>{domainStatus}</dd>
           </div>
           <div>
-            <dt>Dependency rule</dt>
+            <dt>Regla de dependencias</dt>
             <dd>inward</dd>
           </div>
           <div>
-            <dt>Result contract</dt>
+            <dt>Contrato Result</dt>
             <dd>discriminated</dd>
           </div>
         </dl>

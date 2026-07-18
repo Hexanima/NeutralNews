@@ -1,10 +1,10 @@
 # web
 
-React/Vite app for the Clean Architecture template.
+Aplicacion React/Vite para NeutralNews.
 
-This app imports the domain package through `app-domain` and renders a minimal architecture status screen.
+La UI consume contratos compartidos mediante `app-domain` y contratos HTTP de la API local. No debe importar SDKs de proveedores, resolver credenciales ni duplicar reglas del dominio.
 
-## Commands
+## Comandos
 
 - `yarn workspace web dev`
 - `yarn workspace web test --run`

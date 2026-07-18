@@ -1373,14 +1373,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"clean_architecture_template@workspace:.":
-  version: 0.0.0-use.local
-  resolution: "clean_architecture_template@workspace:."
-  dependencies:
-    typescript: "npm:^5.8.3"
-  languageName: unknown
-  linkType: soft
-
 "color-convert@npm:^2.0.1":
   version: 2.0.1
   resolution: "color-convert@npm:2.0.1"
@@ -2418,6 +2410,14 @@ __metadata:
   checksum: 10c0/4c559dd52669ea48e1914f9d634227c561221dd54734070791f999c52ed0ff36e437b2e07d5c1f6e32909fc625fe46491c16e4a8f0572567d4dd15c3a4fda04b
   languageName: node
   linkType: hard
+
+"neutralnews@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "neutralnews@workspace:."
+  dependencies:
+    typescript: "npm:^5.8.3"
+  languageName: unknown
+  linkType: soft
 
 "node-gyp@npm:latest":
   version: 11.4.2

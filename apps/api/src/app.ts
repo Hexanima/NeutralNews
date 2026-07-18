@@ -3,18 +3,18 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { isOk, testUseCase } from "app-domain";
+import { isOk, neutralNewsReadinessUseCase } from "app-domain";
 
 export interface HealthResponse {
-  app: "clean-architecture-template";
+  app: "neutral-news";
   domain: "ready" | "error";
 }
 
 export const createHealthResponse = async (): Promise<HealthResponse> => {
-  const result = await testUseCase.execute(undefined, undefined);
+  const result = await neutralNewsReadinessUseCase.execute(undefined, undefined);
 
   return {
-    app: "clean-architecture-template",
+    app: "neutral-news",
     domain: isOk(result) ? "ready" : "error",
   };
 };

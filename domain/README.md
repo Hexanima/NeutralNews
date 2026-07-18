@@ -1,10 +1,12 @@
 # domain
 
-Framework-independent domain package.
+Paquete de dominio independiente de frameworks para NeutralNews.
 
-Keep entities, value objects, domain errors, use cases, result contracts, and repository ports here. This package must not depend on `apps/*`.
+Mantiene entidades, value objects, errores de dominio, contratos `Result`, casos de uso y futuros puertos de repositorios o servicios externos. Este paquete no debe depender de `apps/*`, React, HTTP, filesystem, SDKs de IA ni parsers RSS.
 
-## Commands
+El use case minimo de readiness existe para verificar la composicion del monorepo antes de agregar funcionalidad editorial.
+
+## Comandos
 
 - `yarn workspace app-domain test --run`
 - `yarn workspace app-domain build`

@@ -1,5 +1,5 @@
 {
-  "name": "clean_architecture_template",
+  "name": "neutralnews",
   "workspaces": [
     "domain",
     "apps/*"
@@ -12,7 +12,7 @@
   "scripts": {
     "fe": "yarn workspaces foreach -vvpA --exclude '.'",
     "fet": "yarn fe --topological",
-    "test": "yarn fe --exclude 'packages/templates/*' run test --run --clearScreen false",
-    "build": "yarn fet --exclude 'packages/templates/*' run build"
+    "test": "yarn fe run test --run --clearScreen false",
+    "build": "yarn fet run build"
   }
 }
