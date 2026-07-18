@@ -1,0 +1,20 @@
+{
+  "name": "api",
+  "packageManager": "yarn@4.9.1",
+  "type": "module",
+  "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "yarn clean && tsc -p tsconfig.build.json",
+    "dev": "tsx watch src/app.ts",
+    "start": "node dist/app.js",
+    "test": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.0",
+    "tsx": "^4.20.6",
+    "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "app-domain": "workspace:^"
+  }
+}
