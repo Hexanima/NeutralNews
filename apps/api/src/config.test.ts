@@ -51,7 +51,42 @@ describe("api configuration", () => {
       accessPasswordHash: validPasswordHash,
       sessionSecret: validSessionSecret,
       aiProviderStatus: "not_configured",
+      externalServices: {
+        timeoutMs: 15_000,
+        maxAttempts: 3,
+        retryDelayMs: 250,
+      },
     });
+  });
+
+  it("loads configurable external service policy values", async () => {
+    const environment = await createValidEnvironment({
+      NEUTRALNEWS_EXTERNAL_TIMEOUT_MS: "5000",
+      NEUTRALNEWS_EXTERNAL_MAX_ATTEMPTS: "2",
+      NEUTRALNEWS_EXTERNAL_RETRY_DELAY_MS: "100",
+    });
+
+    expect(loadApiConfig(environment).externalServices).toEqual({
+      timeoutMs: 5_000,
+      maxAttempts: 2,
+      retryDelayMs: 100,
+    });
+  });
+
+  it.each([
+    ["NEUTRALNEWS_EXTERNAL_TIMEOUT_MS", "0"],
+    ["NEUTRALNEWS_EXTERNAL_TIMEOUT_MS", "-1"],
+    ["NEUTRALNEWS_EXTERNAL_TIMEOUT_MS", "1.5"],
+    ["NEUTRALNEWS_EXTERNAL_MAX_ATTEMPTS", "0"],
+    ["NEUTRALNEWS_EXTERNAL_MAX_ATTEMPTS", "1.5"],
+    ["NEUTRALNEWS_EXTERNAL_RETRY_DELAY_MS", "-1"],
+    ["NEUTRALNEWS_EXTERNAL_RETRY_DELAY_MS", "1.5"],
+  ])("rejects invalid external policy %s=%s", async (variable, value) => {
+    const environment = await createValidEnvironment({
+      [variable]: value,
+    });
+
+    expect(() => loadApiConfig(environment)).toThrow(variable);
   });
 
   it("gives API_PORT priority over PORT", async () => {
@@ -216,6 +251,9 @@ describe("api configuration", () => {
     expect(envExample).toContain("WEB_PORT=");
     expect(envExample).toContain("NEUTRALNEWS_TIME_ZONE=");
     expect(envExample).toContain("NEUTRALNEWS_DATA_DIR=");
+    expect(envExample).toContain("NEUTRALNEWS_EXTERNAL_TIMEOUT_MS=");
+    expect(envExample).toContain("NEUTRALNEWS_EXTERNAL_MAX_ATTEMPTS=");
+    expect(envExample).toContain("NEUTRALNEWS_EXTERNAL_RETRY_DELAY_MS=");
     expect(envExample).toContain("NEUTRALNEWS_ACCESS_PASSWORD_HASH=");
     expect(envExample).toContain("NEUTRALNEWS_SESSION_SECRET=");
     expect(envExample).not.toContain("OPENAI_API_KEY");

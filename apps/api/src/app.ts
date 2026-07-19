@@ -10,9 +10,19 @@ import {
 } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { isOk, neutralNewsReadinessUseCase } from "app-domain";
+import {
+  isOk,
+  neutralNewsReadinessUseCase,
+  type Result,
+} from "app-domain";
 
 import { loadApiConfig, type ApiConfig } from "./config.js";
+import {
+  executeExternalOperation,
+  type ExecuteExternalOperationOptions,
+  type ExternalServiceError,
+  type ExternalServicePolicy,
+} from "./external-service-policy.js";
 export { ConfigurationError, loadApiConfig } from "./config.js";
 
 export interface HealthResponse {
@@ -21,9 +31,40 @@ export interface HealthResponse {
   aiProvider: "not_configured";
 }
 
+type RequestExternalOperationOptions<TResult> = Omit<
+  ExecuteExternalOperationOptions<TResult>,
+  keyof ExternalServicePolicy | "signal"
+> &
+  Partial<ExternalServicePolicy>;
+
+export interface AppRequestContext {
+  signal: AbortSignal;
+  executeExternalOperation: <TResult>(
+    options: RequestExternalOperationOptions<TResult>,
+  ) => Promise<Result<TResult, ExternalServiceError>>;
+}
+
+export type HealthResponseFactory = (
+  context: AppRequestContext,
+) => Promise<HealthResponse>;
+
 export interface AppOptions {
   staticRoot?: string;
   config?: ApiConfig;
+  healthResponseFactory?: HealthResponseFactory;
+}
+
+type RequestEventSource =
+  | NodeEventSource
+  | Pick<EventTarget, "addEventListener" | "removeEventListener">;
+
+interface NodeEventSource {
+  on: (eventName: string, listener: () => void) => unknown;
+  off: (eventName: string, listener: () => void) => unknown;
+}
+
+interface ResponseEventSource extends NodeEventSource {
+  readonly writableEnded: boolean;
 }
 
 interface StartAppOptions {
@@ -84,6 +125,58 @@ const sendFile = (
       "application/octet-stream",
   });
   response.end(body);
+};
+
+const defaultExternalServices: ExternalServicePolicy = {
+  timeoutMs: 15_000,
+  maxAttempts: 3,
+  retryDelayMs: 250,
+};
+
+export const createRequestAbortSignal = (
+  request: RequestEventSource,
+  response?: ResponseEventSource,
+): AbortSignal => {
+  const controller = new AbortController();
+  const abortRequest = () => {
+    controller.abort();
+  };
+
+  if ("addEventListener" in request) {
+    request.addEventListener("abort", abortRequest, { once: true });
+    return controller.signal;
+  }
+
+  request.on("aborted", abortRequest);
+
+  if (response !== undefined) {
+    response.on("close", () => {
+      if (!response.writableEnded) {
+        abortRequest();
+      }
+    });
+  }
+
+  return controller.signal;
+};
+
+export const createAppRequestContext = (
+  request: RequestEventSource,
+  response: ResponseEventSource,
+  config?: ApiConfig,
+): AppRequestContext => {
+  const signal = createRequestAbortSignal(request, response);
+  const policy = config?.externalServices ?? defaultExternalServices;
+
+  return {
+    signal,
+    executeExternalOperation: (options) =>
+      executeExternalOperation({
+        ...policy,
+        ...options,
+        signal,
+      }),
+  };
 };
 
 const isInsideDirectory = (directory: string, filePath: string): boolean => {
@@ -162,11 +255,17 @@ export const requestHandler = async (
   response: ServerResponse,
   options: AppOptions = {},
 ) => {
+  const context = createAppRequestContext(request, response, options.config);
+
   if (
     request.method === "GET" &&
     (request.url === "/health" || request.url === "/api/health")
   ) {
-    sendJson(response, 200, await createHealthResponse(options.config));
+    const healthResponseFactory =
+      options.healthResponseFactory ??
+      (() => createHealthResponse(options.config));
+
+    sendJson(response, 200, await healthResponseFactory(context));
     return;
   }
 
