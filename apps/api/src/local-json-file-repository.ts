@@ -2,6 +2,7 @@ import {
   mkdir,
   open,
   readFile,
+  realpath,
   rename,
   unlink,
   writeFile,
@@ -77,6 +78,9 @@ const writeQueues = new Map<string, Promise<void>>();
 
 const timestampForFileName = () => new Date().toISOString().replace(/\D/g, "");
 
+const isMissingPathError = (error: unknown): boolean =>
+  (error as NodeJS.ErrnoException).code === "ENOENT";
+
 const isInsideDirectory = (directory: string, filePath: string): boolean => {
   const pathDifference = relative(directory, filePath);
 
@@ -108,6 +112,89 @@ const resolveJsonFilePath = (
 
 const ensureRuntimeDirectory = async (dataDirectory: string) => {
   await mkdir(resolve(dataDirectory), { recursive: true });
+};
+
+const resolveRealPathIfExists = async (
+  filePath: string,
+  operation: "read" | "write",
+): Promise<Result<string | null, FileSystemError>> => {
+  try {
+    return ok(await realpath(filePath));
+  } catch (error) {
+    if (isMissingPathError(error)) {
+      return ok(null);
+    }
+
+    return err(new FileSystemError(operation, filePath, error));
+  }
+};
+
+const findExistingParentRealPath = async (
+  filePath: string,
+  operation: "read" | "write",
+): Promise<Result<string | null, FileSystemError>> => {
+  let parentPath = filePath;
+
+  while (dirname(parentPath) !== parentPath) {
+    const parentRealPath = await resolveRealPathIfExists(parentPath, operation);
+
+    if (!parentRealPath.ok || parentRealPath.value !== null) {
+      return parentRealPath;
+    }
+
+    parentPath = dirname(parentPath);
+  }
+
+  return ok(null);
+};
+
+const validateRealPathInsideRuntime = async (
+  runtimeDirectory: string,
+  filePath: string,
+  operation: "read" | "write",
+): Promise<Result<"exists" | "missing", LocalJsonFileRepositoryError>> => {
+  const realRuntimeDirectory = await resolveRealPathIfExists(
+    runtimeDirectory,
+    operation,
+  );
+
+  if (!realRuntimeDirectory.ok) {
+    return realRuntimeDirectory;
+  }
+
+  if (realRuntimeDirectory.value === null) {
+    return err(new FileSystemError(operation, runtimeDirectory, "missing"));
+  }
+
+  const realFilePath = await resolveRealPathIfExists(filePath, operation);
+
+  if (!realFilePath.ok) {
+    return realFilePath;
+  }
+
+  if (realFilePath.value !== null) {
+    return isInsideDirectory(realRuntimeDirectory.value, realFilePath.value)
+      ? ok("exists")
+      : err(new InvalidPathError(filePath));
+  }
+
+  const existingParentRealPath = await findExistingParentRealPath(
+    dirname(filePath),
+    operation,
+  );
+
+  if (!existingParentRealPath.ok) {
+    return existingParentRealPath;
+  }
+
+  if (
+    existingParentRealPath.value !== null &&
+    !isInsideDirectory(realRuntimeDirectory.value, existingParentRealPath.value)
+  ) {
+    return err(new InvalidPathError(filePath));
+  }
+
+  return ok("missing");
 };
 
 const writeJsonAtomically = async (filePath: string, value: JsonValue) => {
@@ -175,13 +262,28 @@ export const createLocalJsonFileRepository = (
 
     try {
       await ensureRuntimeDirectory(dataDirectory);
+      const realPathValidation = await validateRealPathInsideRuntime(
+        resolve(dataDirectory),
+        filePath,
+        "read",
+      );
+
+      if (!realPathValidation.ok) {
+        return realPathValidation;
+      }
+
+      if (realPathValidation.value === "missing") {
+        return ok(null);
+      }
+
       const fileBody = await readFile(filePath, "utf8");
 
       try {
         return ok(JSON.parse(fileBody) as unknown);
       } catch (error) {
         if (error instanceof SyntaxError) {
-          const recoveryPath = `${filePath}.corrupt-${timestampForFileName()}`;
+          const recoveryPath =
+            `${filePath}.corrupt-${timestampForFileName()}-${randomUUID()}`;
           await writeFile(recoveryPath, fileBody, { flag: "wx" });
 
           return err(new CorruptJsonError(filePath, recoveryPath));
@@ -210,6 +312,16 @@ export const createLocalJsonFileRepository = (
     return enqueueWrite(filePath, async () => {
       try {
         await ensureRuntimeDirectory(dataDirectory);
+        const realPathValidation = await validateRealPathInsideRuntime(
+          resolve(dataDirectory),
+          filePath,
+          "write",
+        );
+
+        if (!realPathValidation.ok) {
+          return realPathValidation;
+        }
+
         await writeJsonAtomically(filePath, value);
 
         return ok(undefined);

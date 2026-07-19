@@ -4,10 +4,11 @@ import {
   readFile,
   readdir,
   rm,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { isAbsolute, join } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -26,17 +27,6 @@ vi.mock("node:fs/promises", async (importActual) => {
 
   return {
     ...actual,
-    copyFile: async (
-      source: Parameters<typeof actual.copyFile>[0],
-      destination: Parameters<typeof actual.copyFile>[1],
-      mode?: Parameters<typeof actual.copyFile>[2],
-    ) => {
-      if (mockRecoveryRace.enabled && source === mockRecoveryRace.sourcePath) {
-        await actual.writeFile(source, mockRecoveryRace.replacementBody);
-      }
-
-      return actual.copyFile(source, destination, mode);
-    },
     writeFile: async (
       file: Parameters<typeof actual.writeFile>[0],
       data: Parameters<typeof actual.writeFile>[1],
@@ -141,6 +131,39 @@ describe("local JSON file repository", () => {
     }
   });
 
+  it("rejects directory links inside the runtime that resolve outside it", async () => {
+    const rootDirectory = await createTemporaryDirectory();
+    const runtimeDirectory = join(rootDirectory, "runtime");
+    const outsideDirectory = join(rootDirectory, "outside");
+    const linkedDirectory = join(runtimeDirectory, "linked");
+    const repository = createLocalJsonFileRepository(runtimeDirectory);
+
+    await mkdir(runtimeDirectory);
+    await mkdir(outsideDirectory);
+    await writeFile(
+      join(outsideDirectory, "sources.json"),
+      JSON.stringify({ escaped: true }),
+    );
+    await symlink(
+      resolve(outsideDirectory),
+      linkedDirectory,
+      process.platform === "win32" ? "junction" : "dir",
+    );
+
+    const readResult = await repository.readJson("linked/sources.json");
+    const writeResult = await repository.writeJson("linked/output.json", {
+      escaped: true,
+    });
+
+    expect(readResult.ok).toBe(false);
+    expect(writeResult.ok).toBe(false);
+
+    if (!readResult.ok && !writeResult.ok) {
+      expect(readResult.error.type).toBe("InvalidPath");
+      expect(writeResult.error.type).toBe("InvalidPath");
+    }
+  });
+
   it("keeps a recoverable copy when a JSON file is corrupt", async () => {
     const runtimeDirectory = await createTemporaryDirectory();
     const filePath = join(runtimeDirectory, "sources.json");
@@ -186,6 +209,49 @@ describe("local JSON file repository", () => {
     if (!result.ok && result.error.type === "CorruptJson") {
       expect(await readFile(result.error.recoveryPath, "utf8")).toBe(
         corruptBody,
+      );
+    }
+  });
+
+  it("uses unique recovery paths for simultaneous reads of the same corrupt file", async () => {
+    const runtimeDirectory = await createTemporaryDirectory();
+    const filePath = join(runtimeDirectory, "sources.json");
+    const corruptBody = "{\"sources\":";
+    const repository = createLocalJsonFileRepository(runtimeDirectory);
+
+    await writeFile(filePath, corruptBody);
+    const readResults = await (async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-07-19T01:30:00.000Z"));
+
+      try {
+        return await Promise.all([
+          repository.readJson("sources.json"),
+          repository.readJson("sources.json"),
+        ]);
+      } finally {
+        vi.useRealTimers();
+      }
+    })();
+
+    expect(readResults.every((result) => !result.ok)).toBe(true);
+
+    const corruptResults = readResults.filter(
+      (result) => !result.ok && result.error.type === "CorruptJson",
+    );
+
+    expect(corruptResults).toHaveLength(2);
+
+    if (corruptResults.length === 2) {
+      const recoveryPaths = corruptResults.map((result) =>
+        result.ok ? "" : result.error.recoveryPath,
+      );
+
+      expect(new Set(recoveryPaths).size).toBe(2);
+      await Promise.all(
+        recoveryPaths.map(async (recoveryPath) => {
+          expect(await readFile(recoveryPath, "utf8")).toBe(corruptBody);
+        }),
       );
     }
   });
