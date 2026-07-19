@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AddressInfo } from "node:net";
+import { EventEmitter } from "node:events";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -245,6 +246,26 @@ describe("api app", () => {
     const signal = createRequestAbortSignal(request);
 
     request.dispatchEvent(new Event("close"));
+
+    expect(signal.aborted).toBe(false);
+  });
+
+  it("aborts a request signal when the response connection closes before ending", () => {
+    const request = new EventEmitter();
+    const response = Object.assign(new EventEmitter(), { writableEnded: false });
+    const signal = createRequestAbortSignal(request, response);
+
+    response.emit("close");
+
+    expect(signal.aborted).toBe(true);
+  });
+
+  it("does not abort a request signal when the response closes after ending", () => {
+    const request = new EventEmitter();
+    const response = Object.assign(new EventEmitter(), { writableEnded: true });
+    const signal = createRequestAbortSignal(request, response);
+
+    response.emit("close");
 
     expect(signal.aborted).toBe(false);
   });

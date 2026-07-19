@@ -27,8 +27,17 @@ export interface AppOptions {
 }
 
 type RequestEventSource =
-  | Pick<IncomingMessage, "on" | "off">
+  | NodeEventSource
   | Pick<EventTarget, "addEventListener" | "removeEventListener">;
+
+interface NodeEventSource {
+  on: (eventName: string, listener: () => void) => unknown;
+  off: (eventName: string, listener: () => void) => unknown;
+}
+
+interface ResponseEventSource extends NodeEventSource {
+  readonly writableEnded: boolean;
+}
 
 interface StartAppOptions {
   createServer?: () => {
@@ -92,6 +101,7 @@ const sendFile = (
 
 export const createRequestAbortSignal = (
   request: RequestEventSource,
+  response?: ResponseEventSource,
 ): AbortSignal => {
   const controller = new AbortController();
   const abortRequest = () => {
@@ -104,6 +114,14 @@ export const createRequestAbortSignal = (
   }
 
   request.on("aborted", abortRequest);
+
+  if (response !== undefined) {
+    response.on("close", () => {
+      if (!response.writableEnded) {
+        abortRequest();
+      }
+    });
+  }
 
   return controller.signal;
 };
