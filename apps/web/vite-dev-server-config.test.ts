@@ -18,6 +18,20 @@ const getApiProxy = (environment: NodeJS.ProcessEnv): ProxyOptions => {
 };
 
 describe("vite dev server config", () => {
+  it("loads the Tailwind Vite plugin", () => {
+    const config = createViteConfig({});
+    const plugins = (config.plugins ?? [])
+      .flatMap((plugin) => (Array.isArray(plugin) ? plugin : [plugin]))
+      .filter(Boolean);
+    const pluginNames = plugins.map((plugin) =>
+      typeof plugin === "object" && "name" in plugin
+        ? String(plugin.name)
+        : "",
+    );
+
+    expect(pluginNames.some((name) => name.includes("tailwindcss"))).toBe(true);
+  });
+
   it("uses WEB_PORT when it is configured", () => {
     const config = createViteConfig({ WEB_PORT: "5174" });
 
