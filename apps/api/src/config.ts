@@ -119,15 +119,12 @@ const resolveDataDirectory = (
       });
     }
   } catch (error) {
-    const message =
-      (error as NodeJS.ErrnoException).code === "ENOENT"
-        ? "must point to an existing directory"
-        : "could not be inspected";
-
-    issues.push({
-      variable: "NEUTRALNEWS_DATA_DIR",
-      message,
-    });
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      issues.push({
+        variable: "NEUTRALNEWS_DATA_DIR",
+        message: "could not be inspected",
+      });
+    }
   }
 
   return resolvedDataDirectory;

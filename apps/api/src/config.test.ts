@@ -102,14 +102,14 @@ describe("api configuration", () => {
     expect(() => loadApiConfig(environment)).toThrow(/NEUTRALNEWS_DATA_DIR/);
   });
 
-  it("rejects a data directory that does not exist", async () => {
+  it("accepts a data directory that does not exist yet", async () => {
     const directory = await createDataDirectory();
     const missingDirectory = join(directory, "missing");
     const environment = await createValidEnvironment({
       NEUTRALNEWS_DATA_DIR: missingDirectory,
     });
 
-    expect(() => loadApiConfig(environment)).toThrow(/NEUTRALNEWS_DATA_DIR/);
+    expect(loadApiConfig(environment).dataDirectory).toBe(missingDirectory);
   });
 
   it("rejects a missing access password hash", async () => {
