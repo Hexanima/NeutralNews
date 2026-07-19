@@ -22,5 +22,31 @@ Aplicacion personal y local para consumir noticias politicas con encuadres contr
 - `yarn workspace web test --run`
 - `yarn test`
 - `yarn build`
+- `yarn dev`: inicia API y frontend en paralelo.
 - `yarn workspace api dev`
 - `yarn workspace web dev`
+
+## Desarrollo local
+
+`yarn dev` levanta `apps/api` y `apps/web` en paralelo. El frontend usa el proxy de Vite para acceder a la API con rutas `/api/*`, por ejemplo `/api/health`, sin configurar una URL manual en la UI.
+
+Puertos por defecto:
+
+- API: `3000`
+- Web: `5173`
+
+Variables configurables:
+
+- `API_PORT`: puerto de la API.
+- `PORT`: fallback compatible para la API si `API_PORT` no existe.
+- `WEB_PORT`: puerto del servidor Vite.
+
+En PowerShell:
+
+```powershell
+$env:API_PORT = "4000"
+$env:WEB_PORT = "5174"
+yarn.cmd dev
+```
+
+Al cerrar `yarn dev` con `Ctrl+C`, Yarn detiene los procesos de ambos workspaces.

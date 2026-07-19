@@ -10,6 +10,7 @@
     "typescript": "^5.8.3"
   },
   "scripts": {
+    "dev": "yarn workspaces foreach -A --include api --include web -p -i -j unlimited run dev",
     "fe": "yarn workspaces foreach -vvpA --exclude '.'",
     "fet": "yarn fe --topological",
     "test": "yarn fe run test --run --clearScreen false",
