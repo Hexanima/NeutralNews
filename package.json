@@ -14,6 +14,7 @@
     "fe": "yarn workspaces foreach -vvpA --exclude '.'",
     "fet": "yarn fe --topological",
     "test": "yarn fe run test --run --clearScreen false",
-    "build": "yarn fet run build"
+    "build": "yarn fet run build",
+    "start": "yarn build && yarn workspace api start"
   }
 }
