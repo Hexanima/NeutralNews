@@ -9,11 +9,54 @@ import {
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createLocalJsonFileRepository } from "./local-json-file-repository.js";
 
 const temporaryDirectories: string[] = [];
+const mockRecoveryRace = vi.hoisted(() => ({
+  enabled: false,
+  sourcePath: "",
+  replacementBody: "",
+}));
+
+vi.mock("node:fs/promises", async (importActual) => {
+  const actual =
+    await importActual<typeof import("node:fs/promises")>();
+
+  return {
+    ...actual,
+    copyFile: async (
+      source: Parameters<typeof actual.copyFile>[0],
+      destination: Parameters<typeof actual.copyFile>[1],
+      mode?: Parameters<typeof actual.copyFile>[2],
+    ) => {
+      if (mockRecoveryRace.enabled && source === mockRecoveryRace.sourcePath) {
+        await actual.writeFile(source, mockRecoveryRace.replacementBody);
+      }
+
+      return actual.copyFile(source, destination, mode);
+    },
+    writeFile: async (
+      file: Parameters<typeof actual.writeFile>[0],
+      data: Parameters<typeof actual.writeFile>[1],
+      options?: Parameters<typeof actual.writeFile>[2],
+    ) => {
+      if (
+        mockRecoveryRace.enabled &&
+        typeof file === "string" &&
+        file.includes(".corrupt-")
+      ) {
+        await actual.writeFile(
+          mockRecoveryRace.sourcePath,
+          mockRecoveryRace.replacementBody,
+        );
+      }
+
+      return actual.writeFile(file, data, options);
+    },
+  };
+});
 
 const createTemporaryDirectory = async () => {
   const directory = await mkdtemp(join(tmpdir(), "neutralnews-local-json-"));
@@ -23,6 +66,10 @@ const createTemporaryDirectory = async () => {
 };
 
 afterEach(async () => {
+  mockRecoveryRace.enabled = false;
+  mockRecoveryRace.sourcePath = "";
+  mockRecoveryRace.replacementBody = "";
+
   await Promise.all(
     temporaryDirectories.splice(0).map((directory) =>
       rm(directory, { recursive: true, force: true }),
@@ -117,6 +164,29 @@ describe("local JSON file repository", () => {
           corruptBody,
         );
       }
+    }
+  });
+
+  it("recovers the corrupt content already read when the source file changes", async () => {
+    const runtimeDirectory = await createTemporaryDirectory();
+    const filePath = join(runtimeDirectory, "sources.json");
+    const corruptBody = "{\"sources\":";
+    const replacementBody = JSON.stringify({ sources: [] });
+    const repository = createLocalJsonFileRepository(runtimeDirectory);
+
+    await writeFile(filePath, corruptBody);
+    mockRecoveryRace.enabled = true;
+    mockRecoveryRace.sourcePath = filePath;
+    mockRecoveryRace.replacementBody = replacementBody;
+
+    const result = await repository.readJson("sources.json");
+
+    expect(result.ok).toBe(false);
+
+    if (!result.ok && result.error.type === "CorruptJson") {
+      expect(await readFile(result.error.recoveryPath, "utf8")).toBe(
+        corruptBody,
+      );
     }
   });
 

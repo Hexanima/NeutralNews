@@ -1,10 +1,10 @@
 import {
-  copyFile,
   mkdir,
   open,
   readFile,
   rename,
   unlink,
+  writeFile,
 } from "node:fs/promises";
 import {
   basename,
@@ -182,7 +182,7 @@ export const createLocalJsonFileRepository = (
       } catch (error) {
         if (error instanceof SyntaxError) {
           const recoveryPath = `${filePath}.corrupt-${timestampForFileName()}`;
-          await copyFile(filePath, recoveryPath);
+          await writeFile(recoveryPath, fileBody, { flag: "wx" });
 
           return err(new CorruptJsonError(filePath, recoveryPath));
         }
