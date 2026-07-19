@@ -2,6 +2,7 @@ import { fileURLToPath } from 'node:url'
 
 import { defineConfig, type UserConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 
 const resolvePort = (
   value: string | undefined,
@@ -29,7 +30,7 @@ export const createViteConfig = (
         },
       },
     },
-    plugins: [react()],
+    plugins: [tailwindcss(), react()],
   }
 }
 
