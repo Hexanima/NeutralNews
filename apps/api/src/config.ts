@@ -33,7 +33,8 @@ const defaultHost = "127.0.0.1";
 const defaultPort = 3000;
 const defaultTimeZone = "America/Argentina/Buenos_Aires";
 const bcryptHashPattern = /^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/;
-const argon2HashPattern = /^\$argon2(?:id|i)\$.+/;
+const argon2HashPattern =
+  /^\$argon2(?:id|i)\$v=\d+\$m=\d+,t=\d+,p=\d+\$[A-Za-z0-9+/]+={0,2}\$[A-Za-z0-9+/]+={0,2}$/;
 const minimumSessionSecretLength = 32;
 
 const readRequired = (
@@ -118,12 +119,15 @@ const resolveDataDirectory = (
       });
     }
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-      issues.push({
-        variable: "NEUTRALNEWS_DATA_DIR",
-        message: "could not be inspected",
-      });
-    }
+    const message =
+      (error as NodeJS.ErrnoException).code === "ENOENT"
+        ? "must point to an existing directory"
+        : "could not be inspected";
+
+    issues.push({
+      variable: "NEUTRALNEWS_DATA_DIR",
+      message,
+    });
   }
 
   return resolvedDataDirectory;

@@ -11,6 +11,8 @@ const temporaryDirectories: string[] = [];
 
 const validPasswordHash =
   "$2b$12$C6UzMDM.H6dfI/f/IKcEeO7FDgWz8WUyZVJXl2DrT0S6QYzR2v9Da";
+const validArgon2Hash =
+  "$argon2id$v=19$m=65536,t=3,p=4$c29tZXNhbHQ$MTIzNDU2Nzg5MGFiY2RlZg";
 const validSessionSecret = "0123456789abcdef0123456789abcdef";
 
 const createDataDirectory = async () => {
@@ -100,6 +102,16 @@ describe("api configuration", () => {
     expect(() => loadApiConfig(environment)).toThrow(/NEUTRALNEWS_DATA_DIR/);
   });
 
+  it("rejects a data directory that does not exist", async () => {
+    const directory = await createDataDirectory();
+    const missingDirectory = join(directory, "missing");
+    const environment = await createValidEnvironment({
+      NEUTRALNEWS_DATA_DIR: missingDirectory,
+    });
+
+    expect(() => loadApiConfig(environment)).toThrow(/NEUTRALNEWS_DATA_DIR/);
+  });
+
   it("rejects a missing access password hash", async () => {
     const environment = await createValidEnvironment({
       NEUTRALNEWS_ACCESS_PASSWORD_HASH: undefined,
@@ -119,6 +131,27 @@ describe("api configuration", () => {
       /NEUTRALNEWS_ACCESS_PASSWORD_HASH/,
     );
   });
+
+  it("accepts a valid Argon2 access password hash", async () => {
+    const environment = await createValidEnvironment({
+      NEUTRALNEWS_ACCESS_PASSWORD_HASH: validArgon2Hash,
+    });
+
+    expect(loadApiConfig(environment).accessPasswordHash).toBe(validArgon2Hash);
+  });
+
+  it.each(["$argon2id$", "$argon2i$", "$argon2id$not-enough"])(
+    "rejects malformed Argon2 access password hash %s",
+    async (accessPasswordHash) => {
+      const environment = await createValidEnvironment({
+        NEUTRALNEWS_ACCESS_PASSWORD_HASH: accessPasswordHash,
+      });
+
+      expect(() => loadApiConfig(environment)).toThrow(
+        /NEUTRALNEWS_ACCESS_PASSWORD_HASH/,
+      );
+    },
+  );
 
   it("rejects a missing session secret", async () => {
     const environment = await createValidEnvironment({
