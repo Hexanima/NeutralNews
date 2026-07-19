@@ -231,13 +231,22 @@ describe("api app", () => {
     expect(await response.json()).toEqual({ error: "NotFound" });
   });
 
-  it("aborts a request signal when the HTTP client closes the connection", () => {
+  it("aborts a request signal when the HTTP client aborts the connection", () => {
+    const request = new EventTarget();
+    const signal = createRequestAbortSignal(request);
+
+    request.dispatchEvent(new Event("abort"));
+
+    expect(signal.aborted).toBe(true);
+  });
+
+  it("does not abort a request signal when the request stream closes normally", () => {
     const request = new EventTarget();
     const signal = createRequestAbortSignal(request);
 
     request.dispatchEvent(new Event("close"));
 
-    expect(signal.aborted).toBe(true);
+    expect(signal.aborted).toBe(false);
   });
 
   it("rejects encoded path traversal attempts", async () => {

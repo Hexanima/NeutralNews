@@ -99,12 +99,10 @@ export const createRequestAbortSignal = (
   };
 
   if ("addEventListener" in request) {
-    request.addEventListener("close", abortRequest, { once: true });
     request.addEventListener("abort", abortRequest, { once: true });
     return controller.signal;
   }
 
-  request.on("close", abortRequest);
   request.on("aborted", abortRequest);
 
   return controller.signal;

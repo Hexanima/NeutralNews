@@ -79,6 +79,33 @@ describe("external service policy", () => {
     }
   });
 
+  it("does not start external work when the caller signal is already aborted", async () => {
+    const controller = new AbortController();
+    let attempts = 0;
+    controller.abort();
+
+    const result = await executeExternalOperation({
+      operationName: "rss-feed",
+      idempotent: true,
+      timeoutMs: 10_000,
+      maxAttempts: 3,
+      retryDelayMs: 0,
+      signal: controller.signal,
+      run: async () => {
+        attempts += 1;
+        return "feed";
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    expect(attempts).toBe(0);
+
+    if (!result.ok) {
+      expect(result.error.category).toBe("Cancelled");
+      expect(result.error.retryable).toBe(false);
+    }
+  });
+
   it("retries transient errors for idempotent operations up to the configured limit", async () => {
     let attempts = 0;
 

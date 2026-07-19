@@ -259,6 +259,16 @@ export const executeExternalOperation = async <TResult>({
   const { signal, cleanup } = createCombinedSignal(callerSignal, timeoutMs);
 
   try {
+    if (signal.aborted) {
+      return err(
+        normalizeExternalServiceError({
+          operationName,
+          error: signal.reason ?? createAbortReason("Cancelled"),
+          idempotent,
+        }),
+      );
+    }
+
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       try {
         return ok(
