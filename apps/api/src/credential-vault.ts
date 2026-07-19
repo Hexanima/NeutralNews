@@ -426,6 +426,27 @@ export const createLocalEncryptedCredentialVault = ({
   relativePath = defaultVaultPath,
 }: LocalEncryptedCredentialVaultOptions): CredentialVault => {
   const vaultKey = decodeVaultKey(key);
+  let mutationQueue = Promise.resolve();
+
+  const enqueueMutation = async <TResult>(
+    operation: () => Promise<Result<TResult, CredentialVaultError>>,
+  ): Promise<Result<TResult, CredentialVaultError>> => {
+    const queuedMutation = mutationQueue.catch(() => undefined).then(operation);
+    const queueMarker = queuedMutation.then(
+      () => undefined,
+      () => undefined,
+    );
+
+    mutationQueue = queueMarker;
+
+    try {
+      return await queuedMutation;
+    } finally {
+      if (mutationQueue === queueMarker) {
+        mutationQueue = Promise.resolve();
+      }
+    }
+  };
 
   if (vaultKey === null) {
     return {
@@ -444,30 +465,32 @@ export const createLocalEncryptedCredentialVault = ({
         return validProviderId;
       }
 
-      const vault = await readVault(repository, relativePath);
+      return enqueueMutation(async () => {
+        const vault = await readVault(repository, relativePath);
 
-      if (!vault.ok) {
-        return vault;
-      }
+        if (!vault.ok) {
+          return vault;
+        }
 
-      const currentSecret = vault.value.providers[providerId];
-      const timestamp = nowIso();
-      const metadata: CredentialSecretMetadata = {
-        providerId,
-        reference: createReference(),
-        createdAt: currentSecret?.createdAt ?? timestamp,
-        updatedAt: timestamp,
-      };
+        const currentSecret = vault.value.providers[providerId];
+        const timestamp = nowIso();
+        const metadata: CredentialSecretMetadata = {
+          providerId,
+          reference: createReference(),
+          createdAt: currentSecret?.createdAt ?? timestamp,
+          updatedAt: timestamp,
+        };
 
-      vault.value.providers[providerId] = encryptSecret(
-        vaultKey,
-        metadata,
-        secret,
-      );
+        vault.value.providers[providerId] = encryptSecret(
+          vaultKey,
+          metadata,
+          secret,
+        );
 
-      const write = await writeVault(repository, relativePath, vault.value);
+        const write = await writeVault(repository, relativePath, vault.value);
 
-      return write.ok ? ok(metadata) : write;
+        return write.ok ? ok(metadata) : write;
+      });
     },
 
     readSecret: async (providerId, reference) => {
@@ -528,15 +551,17 @@ export const createLocalEncryptedCredentialVault = ({
         return validProviderId;
       }
 
-      const vault = await readVault(repository, relativePath);
+      return enqueueMutation(async () => {
+        const vault = await readVault(repository, relativePath);
 
-      if (!vault.ok) {
-        return vault;
-      }
+        if (!vault.ok) {
+          return vault;
+        }
 
-      delete vault.value.providers[providerId];
+        delete vault.value.providers[providerId];
 
-      return writeVault(repository, relativePath, vault.value);
+        return writeVault(repository, relativePath, vault.value);
+      });
     },
   };
 };

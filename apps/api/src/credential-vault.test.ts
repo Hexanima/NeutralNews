@@ -5,7 +5,10 @@ import { randomBytes } from "node:crypto";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createLocalJsonFileRepository } from "./local-json-file-repository.js";
+import {
+  createLocalJsonFileRepository,
+  type LocalJsonFileRepository,
+} from "./local-json-file-repository.js";
 import {
   createInMemoryCredentialVault,
   createLocalEncryptedCredentialVault,
@@ -22,6 +25,37 @@ const createTemporaryDirectory = async () => {
 };
 
 const createVaultKey = () => randomBytes(32).toString("base64url");
+
+const createTwoReadBarrierRepository = (
+  repository: LocalJsonFileRepository,
+  relativePath: string,
+): LocalJsonFileRepository => {
+  let readCount = 0;
+  let releaseReads = () => undefined;
+  const bothReadsStarted = new Promise<void>((resolve) => {
+    releaseReads = resolve;
+  });
+  const nextTick = () => new Promise<void>((resolve) => {
+    setTimeout(resolve, 0);
+  });
+
+  return {
+    readJson: async (requestedPath) => {
+      if (requestedPath === relativePath && readCount < 2) {
+        readCount += 1;
+
+        if (readCount === 2) {
+          releaseReads();
+        }
+
+        await Promise.race([bothReadsStarted, nextTick()]);
+      }
+
+      return repository.readJson(requestedPath);
+    },
+    writeJson: repository.writeJson,
+  };
+};
 
 const expectCredentialValueIsNotPresent = (
   payload: unknown,
@@ -267,6 +301,41 @@ describe("credential vault", () => {
     const read = await secondVault.readSecret("openai", saved.value.reference);
 
     expect(read).toEqual({ ok: true, value: secret });
+  });
+
+  it("does not lose provider updates when encrypted saves run concurrently", async () => {
+    const dataDirectory = await createTemporaryDirectory();
+    const relativePath = "credentials/vault.json";
+    const repository = createTwoReadBarrierRepository(
+      createLocalJsonFileRepository(dataDirectory),
+      relativePath,
+    );
+    const vault = createLocalEncryptedCredentialVault({
+      repository,
+      key: createVaultKey(),
+      relativePath,
+    });
+
+    const [openAi, anthropic] = await Promise.all([
+      vault.saveSecret("openai", "secret-a"),
+      vault.saveSecret("anthropic", "secret-b"),
+    ]);
+
+    expect(openAi.ok).toBe(true);
+    expect(anthropic.ok).toBe(true);
+
+    if (!openAi.ok || !anthropic.ok) {
+      return;
+    }
+
+    expect(await vault.readSecret("openai", openAi.value.reference)).toEqual({
+      ok: true,
+      value: "secret-a",
+    });
+    expect(await vault.readSecret("anthropic", anthropic.value.reference)).toEqual({
+      ok: true,
+      value: "secret-b",
+    });
   });
 
   it("returns an unavailable error when the encrypted vault has no key", async () => {
