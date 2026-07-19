@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { AddressInfo } from "node:net";
 import { EventEmitter } from "node:events";
+import { request as httpRequest } from "node:http";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -268,6 +269,85 @@ describe("api app", () => {
     response.emit("close");
 
     expect(signal.aborted).toBe(false);
+  });
+
+  it("propagates HTTP client disconnects to request external operations", async () => {
+    let resolveOperationStarted = () => undefined;
+    const operationStarted = new Promise<void>((resolve) => {
+      resolveOperationStarted = resolve;
+    });
+    let observedOperationSignal: AbortSignal | undefined;
+    let observedCategory: string | undefined;
+    const server = createApp({
+      config: loadApiConfig(await createValidEnvironment()),
+      healthResponseFactory: async ({ executeExternalOperation }) => {
+        const result = await executeExternalOperation({
+          operationName: "rss-feed",
+          idempotent: true,
+          run: ({ signal }) => {
+            observedOperationSignal = signal;
+            resolveOperationStarted();
+
+            return new Promise<string>(() => undefined);
+          },
+        });
+
+        observedCategory = result.ok ? "Ok" : result.error.category;
+
+        return {
+          app: "neutral-news",
+          domain: result.ok ? "ready" : "error",
+          aiProvider: "not_configured",
+        };
+      },
+    });
+
+    await new Promise<void>((resolve) => {
+      server.listen(0, "127.0.0.1", resolve);
+    });
+
+    const address = server.address() as AddressInfo;
+    const clientRequest = httpRequest({
+      hostname: "127.0.0.1",
+      port: address.port,
+      path: "/api/health",
+      method: "GET",
+    });
+    clientRequest.on("error", () => undefined);
+
+    try {
+      clientRequest.end();
+      await operationStarted;
+      clientRequest.destroy();
+
+      await new Promise<void>((resolve) => {
+        const check = () => {
+          if (observedCategory !== undefined) {
+            resolve();
+            return;
+          }
+
+          setTimeout(check, 0);
+        };
+
+        check();
+      });
+
+      expect(observedOperationSignal?.aborted).toBe(true);
+      expect(observedCategory).toBe("Cancelled");
+    } finally {
+      clientRequest.destroy();
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+    }
   });
 
   it("rejects encoded path traversal attempts", async () => {
