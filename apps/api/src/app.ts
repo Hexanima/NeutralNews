@@ -12,13 +12,18 @@ import { fileURLToPath } from "node:url";
 
 import { isOk, neutralNewsReadinessUseCase } from "app-domain";
 
+import { loadApiConfig, type ApiConfig } from "./config.js";
+export { ConfigurationError, loadApiConfig } from "./config.js";
+
 export interface HealthResponse {
   app: "neutral-news";
   domain: "ready" | "error";
+  aiProvider: "not_configured";
 }
 
 export interface AppOptions {
   staticRoot?: string;
+  config?: ApiConfig;
 }
 
 interface StartAppOptions {
@@ -46,12 +51,15 @@ const contentTypes: Record<string, string> = {
   ".txt": "text/plain; charset=utf-8",
 };
 
-export const createHealthResponse = async (): Promise<HealthResponse> => {
+export const createHealthResponse = async (
+  config?: Pick<ApiConfig, "aiProviderStatus">,
+): Promise<HealthResponse> => {
   const result = await neutralNewsReadinessUseCase.execute(undefined, undefined);
 
   return {
     app: "neutral-news",
     domain: isOk(result) ? "ready" : "error",
+    aiProvider: config?.aiProviderStatus ?? "not_configured",
   };
 };
 
@@ -158,7 +166,7 @@ export const requestHandler = async (
     request.method === "GET" &&
     (request.url === "/health" || request.url === "/api/health")
   ) {
-    sendJson(response, 200, await createHealthResponse());
+    sendJson(response, 200, await createHealthResponse(options.config));
     return;
   }
 
@@ -192,12 +200,11 @@ export const resolveApiPort = (
 
 export const startApp = (options: StartAppOptions = {}) => {
   const environment = options.environment ?? process.env;
-  const host = resolveApiHost(environment);
-  const port = resolveApiPort(environment);
-  const server = options.createServer?.() ?? createApp();
+  const config = loadApiConfig(environment);
+  const server = options.createServer?.() ?? createApp({ config });
 
-  server.listen(port, host, () => {
-    console.log(`API listening on http://${host}:${port}`);
+  server.listen(config.port, config.host, () => {
+    console.log(`API listening on http://${config.host}:${config.port}`);
   });
 
   return server;
