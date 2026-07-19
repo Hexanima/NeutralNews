@@ -26,6 +26,10 @@ export interface AppOptions {
   config?: ApiConfig;
 }
 
+type RequestEventSource =
+  | Pick<IncomingMessage, "on" | "off">
+  | Pick<EventTarget, "addEventListener" | "removeEventListener">;
+
 interface StartAppOptions {
   createServer?: () => {
     listen: (
@@ -84,6 +88,26 @@ const sendFile = (
       "application/octet-stream",
   });
   response.end(body);
+};
+
+export const createRequestAbortSignal = (
+  request: RequestEventSource,
+): AbortSignal => {
+  const controller = new AbortController();
+  const abortRequest = () => {
+    controller.abort();
+  };
+
+  if ("addEventListener" in request) {
+    request.addEventListener("close", abortRequest, { once: true });
+    request.addEventListener("abort", abortRequest, { once: true });
+    return controller.signal;
+  }
+
+  request.on("close", abortRequest);
+  request.on("aborted", abortRequest);
+
+  return controller.signal;
 };
 
 const isInsideDirectory = (directory: string, filePath: string): boolean => {

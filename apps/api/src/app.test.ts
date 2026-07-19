@@ -10,6 +10,7 @@ import {
   ConfigurationError,
   createApp,
   createHealthResponse,
+  createRequestAbortSignal,
   loadApiConfig,
   resolveApiHost,
   resolveApiPort,
@@ -228,6 +229,15 @@ describe("api app", () => {
     expect(response.status).toBe(404);
     expect(response.headers.get("content-type")).toContain("application/json");
     expect(await response.json()).toEqual({ error: "NotFound" });
+  });
+
+  it("aborts a request signal when the HTTP client closes the connection", () => {
+    const request = new EventTarget();
+    const signal = createRequestAbortSignal(request);
+
+    request.dispatchEvent(new Event("close"));
+
+    expect(signal.aborted).toBe(true);
   });
 
   it("rejects encoded path traversal attempts", async () => {

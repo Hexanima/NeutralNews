@@ -16,6 +16,13 @@ export interface ApiConfig {
   accessPasswordHash: string;
   sessionSecret: string;
   aiProviderStatus: AiProviderStatus;
+  externalServices: ExternalServiceConfig;
+}
+
+export interface ExternalServiceConfig {
+  timeoutMs: number;
+  maxAttempts: number;
+  retryDelayMs: number;
 }
 
 export class ConfigurationError extends Error {
@@ -32,6 +39,9 @@ export class ConfigurationError extends Error {
 const defaultHost = "127.0.0.1";
 const defaultPort = 3000;
 const defaultTimeZone = "America/Argentina/Buenos_Aires";
+const defaultExternalTimeoutMs = 15_000;
+const defaultExternalMaxAttempts = 3;
+const defaultExternalRetryDelayMs = 250;
 const bcryptHashPattern = /^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/;
 const argon2HashPattern =
   /^\$argon2(?:id|i)\$v=\d+\$m=\d+,t=\d+,p=\d+\$[A-Za-z0-9+/]+={0,2}\$[A-Za-z0-9+/]+={0,2}$/;
@@ -76,6 +86,40 @@ const parsePort = (
   }
 
   return port;
+};
+
+const parseIntegerSetting = (
+  environment: NodeJS.ProcessEnv,
+  variable: string,
+  defaultValue: number,
+  minimumValue: number,
+  issues: ConfigurationIssue[],
+): number => {
+  const rawValue = environment[variable];
+
+  if (rawValue === undefined || rawValue.trim() === "") {
+    return defaultValue;
+  }
+
+  if (!/^\d+$/.test(rawValue)) {
+    issues.push({
+      variable,
+      message: `must be an integer greater than or equal to ${minimumValue}`,
+    });
+    return defaultValue;
+  }
+
+  const value = Number(rawValue);
+
+  if (value < minimumValue) {
+    issues.push({
+      variable,
+      message: `must be an integer greater than or equal to ${minimumValue}`,
+    });
+    return defaultValue;
+  }
+
+  return value;
 };
 
 const resolveTimeZone = (
@@ -181,6 +225,33 @@ const resolveSessionSecret = (
   return sessionSecret;
 };
 
+const resolveExternalServiceConfig = (
+  environment: NodeJS.ProcessEnv,
+  issues: ConfigurationIssue[],
+): ExternalServiceConfig => ({
+  timeoutMs: parseIntegerSetting(
+    environment,
+    "NEUTRALNEWS_EXTERNAL_TIMEOUT_MS",
+    defaultExternalTimeoutMs,
+    1,
+    issues,
+  ),
+  maxAttempts: parseIntegerSetting(
+    environment,
+    "NEUTRALNEWS_EXTERNAL_MAX_ATTEMPTS",
+    defaultExternalMaxAttempts,
+    1,
+    issues,
+  ),
+  retryDelayMs: parseIntegerSetting(
+    environment,
+    "NEUTRALNEWS_EXTERNAL_RETRY_DELAY_MS",
+    defaultExternalRetryDelayMs,
+    0,
+    issues,
+  ),
+});
+
 export const loadApiConfig = (
   environment: NodeJS.ProcessEnv = process.env,
 ): ApiConfig => {
@@ -191,6 +262,7 @@ export const loadApiConfig = (
   const dataDirectory = resolveDataDirectory(environment, issues);
   const accessPasswordHash = resolveAccessPasswordHash(environment, issues);
   const sessionSecret = resolveSessionSecret(environment, issues);
+  const externalServices = resolveExternalServiceConfig(environment, issues);
 
   if (issues.length > 0) {
     throw new ConfigurationError(issues);
@@ -204,5 +276,6 @@ export const loadApiConfig = (
     accessPasswordHash,
     sessionSecret,
     aiProviderStatus: "not_configured",
+    externalServices,
   };
 };
