@@ -50,6 +50,7 @@ describe("api configuration", () => {
       dataDirectory: environment.NEUTRALNEWS_DATA_DIR,
       accessPasswordHash: validPasswordHash,
       sessionSecret: validSessionSecret,
+      credentialVaultKey: undefined,
       aiProviderStatus: "not_configured",
       externalServices: {
         timeoutMs: 15_000,
@@ -211,9 +212,21 @@ describe("api configuration", () => {
   it("does not require AI provider credentials at process startup", async () => {
     const environment = await createValidEnvironment({
       OPENAI_API_KEY: undefined,
+      NEUTRALNEWS_CREDENTIAL_VAULT_KEY: undefined,
     });
 
     expect(loadApiConfig(environment).aiProviderStatus).toBe("not_configured");
+  });
+
+  it("loads the optional credential vault key when it is configured", async () => {
+    const credentialVaultKey = "0123456789abcdef0123456789abcdef";
+    const environment = await createValidEnvironment({
+      NEUTRALNEWS_CREDENTIAL_VAULT_KEY: credentialVaultKey,
+    });
+
+    expect(loadApiConfig(environment).credentialVaultKey).toBe(
+      credentialVaultKey,
+    );
   });
 
   it("reports every invalid variable in the configuration error", async () => {
@@ -256,6 +269,7 @@ describe("api configuration", () => {
     expect(envExample).toContain("NEUTRALNEWS_EXTERNAL_RETRY_DELAY_MS=");
     expect(envExample).toContain("NEUTRALNEWS_ACCESS_PASSWORD_HASH=");
     expect(envExample).toContain("NEUTRALNEWS_SESSION_SECRET=");
+    expect(envExample).toContain("NEUTRALNEWS_CREDENTIAL_VAULT_KEY=");
     expect(envExample).not.toContain("OPENAI_API_KEY");
     expect(envExample).not.toContain(validPasswordHash);
     expect(envExample).not.toContain(validSessionSecret);

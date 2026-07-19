@@ -24,6 +24,7 @@ import {
   type ExternalServicePolicy,
 } from "./external-service-policy.js";
 export { ConfigurationError, loadApiConfig } from "./config.js";
+export * from "./credential-vault.js";
 
 export interface HealthResponse {
   app: "neutral-news";
