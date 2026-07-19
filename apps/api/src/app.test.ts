@@ -7,14 +7,19 @@ import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  ConfigurationError,
   createApp,
   createHealthResponse,
+  loadApiConfig,
   resolveApiHost,
   resolveApiPort,
   startApp,
 } from "./app.js";
 
 const temporaryDirectories: string[] = [];
+const validPasswordHash =
+  "$2b$12$C6UzMDM.H6dfI/f/IKcEeO7FDgWz8WUyZVJXl2DrT0S6QYzR2v9Da";
+const validSessionSecret = "0123456789abcdef0123456789abcdef";
 
 const createStaticRoot = async () => {
   const staticRoot = await mkdtemp(join(tmpdir(), "neutralnews-static-"));
@@ -29,11 +34,32 @@ const createStaticRoot = async () => {
   return staticRoot;
 };
 
+const createDataDirectory = async () => {
+  const directory = await mkdtemp(join(tmpdir(), "neutralnews-data-"));
+  temporaryDirectories.push(directory);
+
+  return directory;
+};
+
+const createValidEnvironment = async (
+  overrides: NodeJS.ProcessEnv = {},
+): Promise<NodeJS.ProcessEnv> => ({
+  NEUTRALNEWS_ACCESS_PASSWORD_HASH: validPasswordHash,
+  NEUTRALNEWS_SESSION_SECRET: validSessionSecret,
+  NEUTRALNEWS_DATA_DIR: await createDataDirectory(),
+  ...overrides,
+});
+
 const fetchFromApp = async (
   staticRoot: string,
   path: string,
+  environment?: NodeJS.ProcessEnv,
 ): Promise<Response> => {
-  const server = createApp({ staticRoot });
+  const server = createApp({
+    staticRoot,
+    config:
+      environment === undefined ? undefined : loadApiConfig(environment),
+  });
 
   await new Promise<void>((resolve) => {
     server.listen(0, "127.0.0.1", resolve);
@@ -74,6 +100,7 @@ describe("api app", () => {
     expect(response).toEqual({
       app: "neutral-news",
       domain: "ready",
+      aiProvider: "not_configured",
     });
   });
 
@@ -101,17 +128,34 @@ describe("api app", () => {
     expect(resolveApiHost({ API_HOST: "0.0.0.0" })).toBe("0.0.0.0");
   });
 
-  it("starts the server with the resolved host and port", () => {
+  it("starts the server with the resolved host and port", async () => {
     const listen = vi.fn();
     const server = { listen };
     const createServer = vi.fn(() => server);
 
     startApp({
       createServer,
-      environment: { API_HOST: "0.0.0.0", API_PORT: "4100" },
+      environment: await createValidEnvironment({
+        API_HOST: "0.0.0.0",
+        API_PORT: "4100",
+      }),
     });
 
     expect(listen).toHaveBeenCalledWith(4100, "0.0.0.0", expect.any(Function));
+  });
+
+  it("fails before listening when configuration is invalid", () => {
+    const listen = vi.fn();
+    const server = { listen };
+    const createServer = vi.fn(() => server);
+
+    expect(() =>
+      startApp({
+        createServer,
+        environment: {},
+      }),
+    ).toThrow(ConfigurationError);
+    expect(listen).not.toHaveBeenCalled();
   });
 
   it("serves health from the root API route", async () => {
@@ -123,6 +167,7 @@ describe("api app", () => {
     expect(await response.json()).toEqual({
       app: "neutral-news",
       domain: "ready",
+      aiProvider: "not_configured",
     });
   });
 
@@ -134,7 +179,19 @@ describe("api app", () => {
     expect(await response.json()).toEqual({
       app: "neutral-news",
       domain: "ready",
+      aiProvider: "not_configured",
     });
+  });
+
+  it("does not expose runtime secrets in health responses", async () => {
+    const staticRoot = await createStaticRoot();
+    const environment = await createValidEnvironment();
+    const response = await fetchFromApp(staticRoot, "/api/health", environment);
+    const body = await response.text();
+
+    expect(body).not.toContain(environment.NEUTRALNEWS_ACCESS_PASSWORD_HASH);
+    expect(body).not.toContain(environment.NEUTRALNEWS_SESSION_SECRET);
+    expect(body).not.toContain("NEUTRALNEWS_DATA_DIR");
   });
 
   it("serves the frontend index at the root route", async () => {
