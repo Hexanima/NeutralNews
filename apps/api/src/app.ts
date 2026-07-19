@@ -42,12 +42,16 @@ export const requestHandler = async (
 
 export const createApp = () => createServer(requestHandler);
 
+export const resolveApiPort = (
+  environment: NodeJS.ProcessEnv = process.env,
+): number => Number(environment.API_PORT ?? environment.PORT ?? 3000);
+
 const isEntrypoint =
   process.argv[1] !== undefined &&
   resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 if (isEntrypoint) {
-  const port = Number(process.env.PORT ?? 3000);
+  const port = resolveApiPort();
   createApp().listen(port, () => {
     console.log(`API listening on http://localhost:${port}`);
   });
