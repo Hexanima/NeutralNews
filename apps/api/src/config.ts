@@ -15,6 +15,7 @@ export interface ApiConfig {
   dataDirectory: string;
   accessPasswordHash: string;
   sessionSecret: string;
+  credentialVaultKey?: string;
   aiProviderStatus: AiProviderStatus;
   externalServices: ExternalServiceConfig;
 }
@@ -262,6 +263,8 @@ export const loadApiConfig = (
   const dataDirectory = resolveDataDirectory(environment, issues);
   const accessPasswordHash = resolveAccessPasswordHash(environment, issues);
   const sessionSecret = resolveSessionSecret(environment, issues);
+  const credentialVaultKey =
+    environment.NEUTRALNEWS_CREDENTIAL_VAULT_KEY?.trim() || undefined;
   const externalServices = resolveExternalServiceConfig(environment, issues);
 
   if (issues.length > 0) {
@@ -275,6 +278,7 @@ export const loadApiConfig = (
     dataDirectory,
     accessPasswordHash,
     sessionSecret,
+    credentialVaultKey,
     aiProviderStatus: "not_configured",
     externalServices,
   };
