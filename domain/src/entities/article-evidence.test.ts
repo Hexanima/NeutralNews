@@ -4,6 +4,7 @@ import {
   createArticle,
   createArticleStatement,
   createEvidenceFragment,
+  createRuntimeEvidenceFragment,
   isErr,
   isOk,
   toArticleSnapshot,
@@ -13,7 +14,6 @@ import type {
   ArticleSnapshot,
   ArticleStatementSnapshot,
   EvidenceContentKind,
-  EvidenceFragment,
   EvidenceFragmentSnapshot,
 } from "../index.js";
 
@@ -86,12 +86,12 @@ describe("Article and evidence contracts", () => {
     expect(isErr(result)).toBe(true);
   });
 
-  it("creates evidence fragments for every supported content kind", () => {
+  it("creates persistible evidence fragments for every supported content kind", () => {
     const cases: Array<{
       contentKind: EvidenceContentKind;
       contentLevel: "complete" | "partial";
     }> = [
-      { contentKind: "extracted_body", contentLevel: "complete" },
+      { contentKind: "extracted_body", contentLevel: "partial" },
       { contentKind: "rss_summary", contentLevel: "partial" },
       { contentKind: "web_snippet", contentLevel: "partial" },
       { contentKind: "primary_document", contentLevel: "complete" },
@@ -117,11 +117,27 @@ describe("Article and evidence contracts", () => {
     }
   });
 
+  it("creates complete extracted body evidence in memory only", () => {
+    const result = createRuntimeEvidenceFragment({
+      ...validEvidenceInput,
+      quality: {
+        contentLevel: "complete",
+      },
+    });
+
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result.value.provenance.contentKind).toBe("extracted_body");
+      expect(result.value.quality.contentLevel).toBe("complete");
+    }
+  });
+
   it.each([
     ["rss_summary", "complete"],
     ["web_snippet", "complete"],
+    ["extracted_body", "complete"],
   ] as const)(
-    "rejects non-extracted partial evidence marked as %s with %s content level",
+    "rejects persistible %s evidence with %s content level",
     (contentKind, contentLevel) => {
       const result = createEvidenceFragment({
         ...validEvidenceInput,
@@ -181,21 +197,21 @@ describe("Article and evidence contracts", () => {
   });
 
   it("does not serialize complete extracted article bodies as persistible evidence snapshots", () => {
-    const completeExtractedBody: EvidenceFragment = {
+    const completeExtractedBody = createRuntimeEvidenceFragment({
+      ...validEvidenceInput,
       id: "55555555-5555-4555-8555-555555555555",
       text: "Texto completo extraido del articulo que no debe persistirse.",
-      provenance: {
-        articleId: validArticleInput.id,
-        sourceId: validArticleInput.sourceId,
-        url: validArticleInput.url,
-        contentKind: "extracted_body",
-      },
       quality: {
         contentLevel: "complete",
       },
-    } as EvidenceFragment;
+    });
 
-    const result = toEvidenceFragmentSnapshot(completeExtractedBody);
+    expect(isOk(completeExtractedBody)).toBe(true);
+    if (!isOk(completeExtractedBody)) {
+      return;
+    }
+
+    const result = toEvidenceFragmentSnapshot(completeExtractedBody.value);
 
     expect(isErr(result)).toBe(true);
   });
@@ -229,4 +245,3 @@ describe("Article and evidence contracts", () => {
     expect(isErr(result)).toBe(true);
   });
 });
-

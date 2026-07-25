@@ -70,6 +70,13 @@ export interface EvidenceFragmentSnapshot {
   quality: EvidenceQualitySnapshot;
 }
 
+export interface RuntimeEvidenceFragmentInput {
+  id: string;
+  text: string;
+  provenance: EvidenceProvenanceSnapshot;
+  quality: EvidenceQualitySnapshot;
+}
+
 export interface EvidenceOriginReference {
   evidenceFragmentId: UUID;
 }
@@ -145,6 +152,11 @@ const contentKinds = new Set<string>([
 const contentLevels = new Set<string>(["complete", "partial"]);
 
 type UnknownRecord = Record<string, unknown>;
+
+type EvidenceLevelPolicy = (
+  contentKind: EvidenceContentKind,
+  contentLevel: EvidenceContentLevel,
+) => boolean;
 
 const isString = (value: unknown): value is string => typeof value === "string";
 
@@ -253,9 +265,9 @@ const createRecord = (
   return ok(value);
 };
 
-const evidenceLevelMatchesKind = (
-  contentKind: EvidenceContentKind,
-  contentLevel: EvidenceContentLevel,
+const evidenceLevelMatchesKind: EvidenceLevelPolicy = (
+  contentKind,
+  contentLevel,
 ) => {
   if (contentKind === "rss_summary" || contentKind === "web_snippet") {
     return contentLevel === "partial";
@@ -264,9 +276,9 @@ const evidenceLevelMatchesKind = (
   return true;
 };
 
-const persistibleEvidenceLevelMatchesKind = (
-  contentKind: EvidenceContentKind,
-  contentLevel: EvidenceContentLevel,
+const persistibleEvidenceLevelMatchesKind: EvidenceLevelPolicy = (
+  contentKind,
+  contentLevel,
 ) => {
   if (contentKind === "extracted_body") {
     return contentLevel === "partial";
@@ -330,16 +342,17 @@ export const toArticleSnapshot = (article: Article): ArticleSnapshot => ({
   publishedAt: article.publishedAt,
 });
 
-export const createEvidenceFragment = (
-  snapshot: EvidenceFragmentSnapshot,
+const createEvidenceFragmentWithPolicy = (
+  input: RuntimeEvidenceFragmentInput,
+  levelPolicy: EvidenceLevelPolicy,
 ): Result<EvidenceFragment, InvalidArticleEvidenceError> => {
-  const provenance = createRecord("provenance", snapshot.provenance);
-  const quality = createRecord("quality", snapshot.quality);
+  const provenance = createRecord("provenance", input.provenance);
+  const quality = createRecord("quality", input.quality);
   const provenanceValue = provenance.ok ? provenance.value : {};
   const qualityValue = quality.ok ? quality.value : {};
 
-  const id = createUuid("id", snapshot.id);
-  const text = createNonEmptyText("text", snapshot.text);
+  const id = createUuid("id", input.id);
+  const text = createNonEmptyText("text", input.text);
   const articleId = createUuid("articleId", provenanceValue.articleId);
   const sourceId = createUuid("sourceId", provenanceValue.sourceId);
   const url = createArticleUrl(provenanceValue.url);
@@ -374,7 +387,7 @@ export const createEvidenceFragment = (
     );
   }
 
-  if (!evidenceLevelMatchesKind(contentKind.value, contentLevel.value)) {
+  if (!levelPolicy(contentKind.value, contentLevel.value)) {
     return err(invalidEvidenceQuality(contentKind.value, contentLevel.value));
   }
 
@@ -392,6 +405,19 @@ export const createEvidenceFragment = (
     },
   });
 };
+
+export const createEvidenceFragment = (
+  snapshot: EvidenceFragmentSnapshot,
+): Result<EvidenceFragment, InvalidArticleEvidenceError> =>
+  createEvidenceFragmentWithPolicy(
+    snapshot,
+    persistibleEvidenceLevelMatchesKind,
+  );
+
+export const createRuntimeEvidenceFragment = (
+  input: RuntimeEvidenceFragmentInput,
+): Result<EvidenceFragment, InvalidArticleEvidenceError> =>
+  createEvidenceFragmentWithPolicy(input, evidenceLevelMatchesKind);
 
 export const toEvidenceFragmentSnapshot = (
   evidence: EvidenceFragment,
@@ -451,7 +477,13 @@ export const createArticleStatement = (
   ) {
     return err(
       new InvalidArticleEvidenceError(
-        collectErrors([id, text, attribution, originReference, evidenceFragmentId]),
+        collectErrors([
+          id,
+          text,
+          attribution,
+          originReference,
+          evidenceFragmentId,
+        ]),
       ),
     );
   }
@@ -465,4 +497,3 @@ export const createArticleStatement = (
     },
   });
 };
-
