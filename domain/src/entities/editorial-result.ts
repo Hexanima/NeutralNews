@@ -752,6 +752,7 @@ export const toRewriteResultSnapshot = (
 
 const createFactualContextPoint = (
   snapshot: FactualContextPointSnapshot,
+  knownEvidenceFragmentIds: ReadonlySet<string>,
 ): Result<FactualContextPoint, InvalidEditorialResultError> => {
   const id = createUuid("id", snapshot.id);
   const text = createNonEmptyText("text", snapshot.text);
@@ -762,6 +763,13 @@ const createFactualContextPoint = (
   const errors = [
     ...collectErrors([id, text]),
     ...(evidenceFragmentIds.ok ? [] : evidenceFragmentIds.errors),
+    ...(evidenceFragmentIds.ok
+      ? validateKnownIds(
+          "evidenceFragmentIds",
+          validationValue(evidenceFragmentIds),
+          knownEvidenceFragmentIds,
+        )
+      : []),
   ];
 
   if (errors.length > 0) {
@@ -777,6 +785,7 @@ const createFactualContextPoint = (
 
 const createFactualContext = (
   snapshot: FactualContextSnapshot,
+  knownEvidenceFragmentIds: ReadonlySet<string>,
 ): Result<FactualContext, InvalidEditorialResultError> => {
   const record = createRecord("factualContext", snapshot);
 
@@ -805,7 +814,10 @@ const createFactualContext = (
   }
 
   const createdPoints = points.value.map((point) =>
-    createFactualContextPoint(point as FactualContextPointSnapshot),
+    createFactualContextPoint(
+      point as FactualContextPointSnapshot,
+      knownEvidenceFragmentIds,
+    ),
   );
   const errors = [
     ...collectErrors([summary]),
@@ -827,8 +839,18 @@ const createFactualContext = (
 export const createContextResult = (
   snapshot: ContextResultSnapshot,
 ): Result<ContextResult, InvalidEditorialResultError> => {
-  const factualContext = createFactualContext(snapshot.factualContext);
   const mediaCoverage = createTriangulationResult(snapshot.mediaCoverage);
+  const knownEvidenceFragmentIds = mediaCoverage.ok
+    ? new Set(
+        resultValue(mediaCoverage).sources.flatMap(
+          (source) => source.evidenceFragmentIds,
+        ),
+      )
+    : new Set<string>();
+  const factualContext = createFactualContext(
+    snapshot.factualContext,
+    knownEvidenceFragmentIds,
+  );
   const warnings = createEditorialWarnings(snapshot.warnings);
   const errors = [
     ...(factualContext.ok ? [] : factualContext.error.errors),

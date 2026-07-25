@@ -252,6 +252,23 @@ describe("Editorial result contracts", () => {
     expect(isErr(result)).toBe(true);
   });
 
+  it("rejects factual context points that reference evidence outside media coverage", () => {
+    const result = createContextResult({
+      ...validContextInput,
+      factualContext: {
+        ...validContextInput.factualContext,
+        points: [
+          {
+            ...validContextInput.factualContext.points[0],
+            evidenceFragmentIds: ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"],
+          },
+        ],
+      },
+    });
+
+    expect(isErr(result)).toBe(true);
+  });
+
   it.each(["fresh", "stale", "generating", "partial", "failed"] as const)(
     "creates feed results with %s status",
     (status) => {
