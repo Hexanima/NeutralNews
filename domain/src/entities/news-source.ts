@@ -13,12 +13,12 @@ export type IsoDateTimeString = string & {
 };
 
 export type NewsSourceOrientation =
-  | "left"
-  | "center_left"
+  | "izquierda"
+  | "centroizquierda"
   | "center"
-  | "center_right"
-  | "right"
-  | "unclassified";
+  | "centroderecha"
+  | "derecha"
+  | "sin_clasificar";
 
 export type NewsSourceType = "media" | "agency" | "primary_source";
 
@@ -82,12 +82,12 @@ export class InvalidNewsSourceError extends TaggedError<"InvalidNewsSource"> {
 }
 
 const orientations = new Set<string>([
-  "left",
-  "center_left",
+  "izquierda",
+  "centroizquierda",
   "center",
-  "center_right",
-  "right",
-  "unclassified",
+  "centroderecha",
+  "derecha",
+  "sin_clasificar",
 ]);
 
 const sourceTypes = new Set<string>(["media", "agency", "primary_source"]);

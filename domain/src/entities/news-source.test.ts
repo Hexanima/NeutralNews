@@ -18,7 +18,7 @@ import type {
 const validSourceInput: NewsSourceSnapshot = {
   id: "11111111-1111-4111-8111-111111111111",
   name: "Agencia Publica",
-  orientation: "unclassified",
+  orientation: "sin_clasificar",
   type: "agency",
   region: "argentina",
   country: "AR",
@@ -31,12 +31,12 @@ const validSourceInput: NewsSourceSnapshot = {
 describe("NewsSource", () => {
   it("accepts every supported editorial orientation", () => {
     const orientations: NewsSourceOrientation[] = [
-      "left",
-      "center_left",
+      "izquierda",
+      "centroizquierda",
       "center",
-      "center_right",
-      "right",
-      "unclassified",
+      "centroderecha",
+      "derecha",
+      "sin_clasificar",
     ];
 
     for (const orientation of orientations) {
@@ -58,14 +58,14 @@ describe("NewsSource", () => {
     for (const type of types) {
       const result = createNewsSource({
         ...validSourceInput,
-        orientation: "unclassified",
+        orientation: "sin_clasificar",
         type,
       });
 
       expect(isOk(result)).toBe(true);
       if (isOk(result)) {
         expect(result.value.type).toBe(type);
-        expect(result.value.orientation).toBe("unclassified");
+        expect(result.value.orientation).toBe("sin_clasificar");
       }
     }
   });
