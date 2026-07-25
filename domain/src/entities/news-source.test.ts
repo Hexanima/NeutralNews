@@ -33,7 +33,7 @@ describe("NewsSource", () => {
     const orientations: NewsSourceOrientation[] = [
       "izquierda",
       "centroizquierda",
-      "center",
+      "centro",
       "centroderecha",
       "derecha",
       "sin_clasificar",

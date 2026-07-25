@@ -15,7 +15,7 @@ export type IsoDateTimeString = string & {
 export type NewsSourceOrientation =
   | "izquierda"
   | "centroizquierda"
-  | "center"
+  | "centro"
   | "centroderecha"
   | "derecha"
   | "sin_clasificar";
@@ -84,7 +84,7 @@ export class InvalidNewsSourceError extends TaggedError<"InvalidNewsSource"> {
 const orientations = new Set<string>([
   "izquierda",
   "centroizquierda",
-  "center",
+  "centro",
   "centroderecha",
   "derecha",
   "sin_clasificar",
