@@ -1,0 +1,84 @@
+import { TaggedError } from "../types/error.js";
+
+export type JsonPrimitive = string | number | boolean | null;
+export type JsonValue =
+  | JsonPrimitive
+  | readonly JsonValue[]
+  | { readonly [key: string]: JsonValue };
+
+export interface PortOperationOptions {
+  signal?: AbortSignal | undefined;
+}
+
+export interface PortLimitOptions {
+  timeoutMs?: number | undefined;
+  maxItems?: number | undefined;
+  maxBytes?: number | undefined;
+  maxConcurrency?: number | undefined;
+}
+
+export type LimitedPortOperationOptions = PortOperationOptions &
+  PortLimitOptions;
+
+export class PortCancelledError extends TaggedError<"PortCancelled"> {
+  public readonly type = "PortCancelled";
+
+  constructor(public readonly operationName: string) {
+    super("PortCancelled");
+    this.message = `${operationName} was cancelled`;
+  }
+}
+
+export class PortLimitExceededError extends TaggedError<"PortLimitExceeded"> {
+  public readonly type = "PortLimitExceeded";
+
+  constructor(
+    public readonly operationName: string,
+    public readonly limitName:
+      | "timeoutMs"
+      | "maxItems"
+      | "maxBytes"
+      | "maxConcurrency",
+  ) {
+    super("PortLimitExceeded");
+    this.message = `${operationName} exceeded ${limitName}`;
+  }
+}
+
+export type ExternalPortFailureCategory =
+  | "Timeout"
+  | "Cancelled"
+  | "TransientFailure"
+  | "PermanentFailure";
+
+export class ExternalPortError extends TaggedError<"ExternalPortError"> {
+  public readonly type = "ExternalPortError";
+
+  constructor(
+    public readonly operationName: string,
+    public readonly category: ExternalPortFailureCategory,
+    public readonly statusCode?: number | undefined,
+  ) {
+    super("ExternalPortError");
+    this.message = `${operationName} failed: ${category}`;
+  }
+}
+
+export class AiCapabilityUnavailableError extends TaggedError<"AiCapabilityUnavailable"> {
+  public readonly type = "AiCapabilityUnavailable";
+
+  constructor(
+    public readonly providerId: string,
+    public readonly modelId: string,
+    public readonly capability: string,
+  ) {
+    super("AiCapabilityUnavailable");
+    this.message = `${providerId}/${modelId} does not provide ${capability}`;
+  }
+}
+
+export type PortError =
+  | PortCancelledError
+  | PortLimitExceededError
+  | ExternalPortError
+  | AiCapabilityUnavailableError;
