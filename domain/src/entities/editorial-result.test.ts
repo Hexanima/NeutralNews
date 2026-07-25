@@ -23,6 +23,8 @@ const sourceId = "11111111-1111-4111-8111-111111111111";
 const secondSourceId = "22222222-2222-4222-8222-222222222222";
 const evidenceFragmentId = "33333333-3333-4333-8333-333333333333";
 const secondEvidenceFragmentId = "44444444-4444-4444-8444-444444444444";
+const factualSourceId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const factualEvidenceFragmentId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
 const validSources = [
   {
@@ -80,11 +82,17 @@ const validRewriteInput: RewriteResultSnapshot = {
 const validContextInput: ContextResultSnapshot = {
   factualContext: {
     summary: "La norma regula un esquema vigente desde 2024.",
+    sources: [
+      {
+        sourceId: factualSourceId,
+        evidenceFragmentIds: [factualEvidenceFragmentId],
+      },
+    ],
     points: [
       {
         id: "88888888-8888-4888-8888-888888888888",
         text: "El esquema fue aprobado por ley nacional.",
-        evidenceFragmentIds: [evidenceFragmentId],
+        evidenceFragmentIds: [factualEvidenceFragmentId],
       },
     ],
   },
@@ -246,9 +254,17 @@ describe("Editorial result contracts", () => {
       expect(result.value.factualContext.summary).toBe(
         validContextInput.factualContext.summary,
       );
+      expect(result.value.factualContext.sources[0]?.sourceId).toBe(
+        factualSourceId,
+      );
       expect(result.value.mediaCoverage.summary).toBe(
         validTriangulationInput.summary,
       );
+      expect(
+        result.value.mediaCoverage.sources.some((source) =>
+          source.evidenceFragmentIds.includes(factualEvidenceFragmentId),
+        ),
+      ).toBe(false);
     }
   });
 
@@ -264,7 +280,7 @@ describe("Editorial result contracts", () => {
     expect(isErr(result)).toBe(true);
   });
 
-  it("rejects factual context points that reference evidence outside media coverage", () => {
+  it("rejects factual context points that reference evidence outside factual context sources", () => {
     const result = createContextResult({
       ...validContextInput,
       factualContext: {

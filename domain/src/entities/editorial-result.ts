@@ -110,11 +110,13 @@ export interface FactualContextPointSnapshot {
 
 export interface FactualContext {
   summary: string;
+  sources: readonly EditorialSourceReference[];
   points: readonly FactualContextPoint[];
 }
 
 export interface FactualContextSnapshot {
   summary: string;
+  sources: readonly EditorialSourceReferenceSnapshot[];
   points: readonly FactualContextPointSnapshot[];
 }
 
@@ -823,7 +825,6 @@ const createFactualContextPoint = (
 
 const createFactualContext = (
   snapshot: FactualContextSnapshot,
-  knownEvidenceFragmentIds: ReadonlySet<string>,
 ): Result<FactualContext, InvalidEditorialResultError> => {
   const record = createRecord("factualContext", snapshot);
 
@@ -839,13 +840,19 @@ const createFactualContext = (
     );
   }
 
-  const summary = createNonEmptyText("summary", snapshot.summary);
-  const points = createArray("points", snapshot.points);
+  const summary = createNonEmptyText("summary", record.value.summary);
+  const sources = createSourceReferences(record.value.sources);
+  const sourceValues = sources.ok ? resultValue(sources) : [];
+  const knownEvidenceFragmentIds = new Set(
+    sourceValues.flatMap((source) => source.evidenceFragmentIds),
+  );
+  const points = createArray("points", record.value.points);
 
   if (!points.ok) {
     return err(
       new InvalidEditorialResultError([
         ...collectErrors([summary]),
+        ...(sources.ok ? [] : sources.error.errors),
         points.error,
       ]),
     );
@@ -859,6 +866,7 @@ const createFactualContext = (
   );
   const errors = [
     ...collectErrors([summary]),
+    ...(sources.ok ? [] : sources.error.errors),
     ...createdPoints.flatMap((result) =>
       result.ok ? [] : result.error.errors,
     ),
@@ -870,6 +878,7 @@ const createFactualContext = (
 
   return ok({
     summary: resultValue(summary),
+    sources: resultValue(sources),
     points: createdPoints.map((result) => resultValue(result)),
   });
 };
@@ -878,17 +887,7 @@ export const createContextResult = (
   snapshot: ContextResultSnapshot,
 ): Result<ContextResult, InvalidEditorialResultError> => {
   const mediaCoverage = createTriangulationResult(snapshot.mediaCoverage);
-  const knownEvidenceFragmentIds = mediaCoverage.ok
-    ? new Set(
-        resultValue(mediaCoverage).sources.flatMap(
-          (source) => source.evidenceFragmentIds,
-        ),
-      )
-    : new Set<string>();
-  const factualContext = createFactualContext(
-    snapshot.factualContext,
-    knownEvidenceFragmentIds,
-  );
+  const factualContext = createFactualContext(snapshot.factualContext);
   const warnings = createEditorialWarnings(snapshot.warnings);
   const errors = [
     ...(factualContext.ok ? [] : factualContext.error.errors),
@@ -912,6 +911,7 @@ export const toContextResultSnapshot = (
 ): ContextResultSnapshot => ({
   factualContext: {
     summary: result.factualContext.summary,
+    sources: result.factualContext.sources.map(toEditorialSourceReferenceSnapshot),
     points: result.factualContext.points.map((point) => ({
       id: point.id,
       text: point.text,
