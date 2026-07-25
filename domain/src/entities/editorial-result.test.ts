@@ -188,6 +188,18 @@ describe("Editorial result contracts", () => {
     expect(isErr(invalidReference)).toBe(true);
   });
 
+  it("returns an editorial error when nested arrays contain non-record items", () => {
+    const result = createTriangulationResult({
+      ...validTriangulationInput,
+      warnings: [null],
+    } as unknown as TriangulationResultSnapshot);
+
+    expect(isErr(result)).toBe(true);
+    if (isErr(result)) {
+      expect(result.error.type).toBe("InvalidEditorialResult");
+    }
+  });
+
   it("rejects references to sources or evidence not present in the result", () => {
     const result = createTriangulationResult({
       ...validTriangulationInput,
@@ -261,6 +273,23 @@ describe("Editorial result contracts", () => {
           {
             ...validContextInput.factualContext.points[0],
             evidenceFragmentIds: ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"],
+          },
+        ],
+      },
+    });
+
+    expect(isErr(result)).toBe(true);
+  });
+
+  it("rejects factual context points without evidence references", () => {
+    const result = createContextResult({
+      ...validContextInput,
+      factualContext: {
+        ...validContextInput.factualContext,
+        points: [
+          {
+            ...validContextInput.factualContext.points[0],
+            evidenceFragmentIds: [],
           },
         ],
       },

@@ -390,12 +390,19 @@ const createEditorialWarning = (
   knownSourceIds?: ReadonlySet<string>,
   knownEvidenceFragmentIds?: ReadonlySet<string>,
 ): Result<EditorialWarning, InvalidEditorialResultError> => {
-  const kind = createWarningKind(snapshot.kind);
-  const message = createNonEmptyText("message", snapshot.message);
-  const sourceIds = createOptionalUuidArray("sourceIds", snapshot.sourceIds);
+  const record = createRecord("warnings", snapshot);
+
+  if (!record.ok) {
+    return err(new InvalidEditorialResultError([record.error]));
+  }
+
+  const warningValue = record.value;
+  const kind = createWarningKind(warningValue.kind);
+  const message = createNonEmptyText("message", warningValue.message);
+  const sourceIds = createOptionalUuidArray("sourceIds", warningValue.sourceIds);
   const evidenceFragmentIds = createOptionalUuidArray(
     "evidenceFragmentIds",
-    snapshot.evidenceFragmentIds,
+    warningValue.evidenceFragmentIds,
   );
 
   const valueErrors = [
@@ -461,10 +468,17 @@ const createEditorialWarnings = (
 const createSourceReference = (
   snapshot: EditorialSourceReferenceSnapshot,
 ): Result<EditorialSourceReference, InvalidEditorialResultError> => {
-  const sourceId = createUuid("sourceId", snapshot.sourceId);
+  const record = createRecord("sources", snapshot);
+
+  if (!record.ok) {
+    return err(new InvalidEditorialResultError([record.error]));
+  }
+
+  const sourceValue = record.value;
+  const sourceId = createUuid("sourceId", sourceValue.sourceId);
   const evidenceFragmentIds = createUuidArray(
     "evidenceFragmentIds",
-    snapshot.evidenceFragmentIds,
+    sourceValue.evidenceFragmentIds,
   );
   const errors = [
     ...collectErrors([sourceId]),
@@ -509,12 +523,19 @@ const createEditorialClaim = (
   knownSourceIds: ReadonlySet<string>,
   knownEvidenceFragmentIds: ReadonlySet<string>,
 ): Result<EditorialClaim, InvalidEditorialResultError> => {
-  const id = createUuid("id", snapshot.id);
-  const text = createNonEmptyText("text", snapshot.text);
-  const sourceIds = createUuidArray("sourceIds", snapshot.sourceIds);
+  const record = createRecord("result", snapshot);
+
+  if (!record.ok) {
+    return err(new InvalidEditorialResultError([record.error]));
+  }
+
+  const claimValue = record.value;
+  const id = createUuid("id", claimValue.id);
+  const text = createNonEmptyText("text", claimValue.text);
+  const sourceIds = createUuidArray("sourceIds", claimValue.sourceIds);
   const evidenceFragmentIds = createUuidArray(
     "evidenceFragmentIds",
-    snapshot.evidenceFragmentIds,
+    claimValue.evidenceFragmentIds,
   );
   const valueErrors = [
     ...collectErrors([id, text]),
@@ -670,12 +691,19 @@ export const toTriangulationResultSnapshot = (
 const createRewriteChange = (
   snapshot: RewriteChangeSnapshot,
 ): Result<RewriteChange, InvalidEditorialResultError> => {
-  const id = createUuid("id", snapshot.id);
-  const originalText = createNonEmptyText("originalText", snapshot.originalText);
-  const neutralText = createNonEmptyText("neutralText", snapshot.neutralText);
+  const record = createRecord("changes", snapshot);
+
+  if (!record.ok) {
+    return err(new InvalidEditorialResultError([record.error]));
+  }
+
+  const changeValue = record.value;
+  const id = createUuid("id", changeValue.id);
+  const originalText = createNonEmptyText("originalText", changeValue.originalText);
+  const neutralText = createNonEmptyText("neutralText", changeValue.neutralText);
   const justification = createNonEmptyText(
     "justification",
-    snapshot.justification,
+    changeValue.justification,
   );
   const errors = collectErrors([id, originalText, neutralText, justification]);
 
@@ -754,15 +782,25 @@ const createFactualContextPoint = (
   snapshot: FactualContextPointSnapshot,
   knownEvidenceFragmentIds: ReadonlySet<string>,
 ): Result<FactualContextPoint, InvalidEditorialResultError> => {
-  const id = createUuid("id", snapshot.id);
-  const text = createNonEmptyText("text", snapshot.text);
+  const record = createRecord("points", snapshot);
+
+  if (!record.ok) {
+    return err(new InvalidEditorialResultError([record.error]));
+  }
+
+  const pointValue = record.value;
+  const id = createUuid("id", pointValue.id);
+  const text = createNonEmptyText("text", pointValue.text);
   const evidenceFragmentIds = createUuidArray(
     "evidenceFragmentIds",
-    snapshot.evidenceFragmentIds,
+    pointValue.evidenceFragmentIds,
   );
   const errors = [
     ...collectErrors([id, text]),
     ...(evidenceFragmentIds.ok ? [] : evidenceFragmentIds.errors),
+    ...(evidenceFragmentIds.ok && validationValue(evidenceFragmentIds).length === 0
+      ? [invalidValue("evidenceFragmentIds", validationValue(evidenceFragmentIds))]
+      : []),
     ...(evidenceFragmentIds.ok
       ? validateKnownIds(
           "evidenceFragmentIds",
@@ -887,14 +925,21 @@ export const toContextResultSnapshot = (
 const createFeedTopicResult = (
   snapshot: FeedTopicResultSnapshot,
 ): Result<FeedTopicResult, InvalidEditorialResultError> => {
-  const id = createUuid("id", snapshot.id);
-  const title = createNonEmptyText("title", snapshot.title);
-  const summary = createNonEmptyText("summary", snapshot.summary);
-  const warnings = createEditorialWarnings(snapshot.warnings);
+  const record = createRecord("topics", snapshot);
+
+  if (!record.ok) {
+    return err(new InvalidEditorialResultError([record.error]));
+  }
+
+  const topicValue = record.value;
+  const id = createUuid("id", topicValue.id);
+  const title = createNonEmptyText("title", topicValue.title);
+  const summary = createNonEmptyText("summary", topicValue.summary);
+  const warnings = createEditorialWarnings(topicValue.warnings);
   const result =
-    snapshot.result === undefined
+    topicValue.result === undefined
       ? ok(undefined)
-      : createTriangulationResult(snapshot.result);
+      : createTriangulationResult(topicValue.result as TriangulationResultSnapshot);
   const errors = [
     ...collectErrors([id, title, summary]),
     ...(warnings.ok ? [] : warnings.error.errors),
