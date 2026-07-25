@@ -13,6 +13,7 @@ import type {
   ArticleSnapshot,
   ArticleStatementSnapshot,
   EvidenceContentKind,
+  EvidenceFragment,
   EvidenceFragmentSnapshot,
 } from "../index.js";
 
@@ -35,7 +36,7 @@ const validEvidenceInput: EvidenceFragmentSnapshot = {
     contentKind: "extracted_body",
   },
   quality: {
-    contentLevel: "complete",
+    contentLevel: "partial",
   },
 };
 
@@ -85,12 +86,12 @@ describe("Article and evidence contracts", () => {
     expect(isErr(result)).toBe(true);
   });
 
-  it("creates evidence fragments for every supported content kind", () => {
+  it("creates persistible evidence fragments for every supported content kind", () => {
     const cases: Array<{
       contentKind: EvidenceContentKind;
       contentLevel: "complete" | "partial";
     }> = [
-      { contentKind: "extracted_body", contentLevel: "complete" },
+      { contentKind: "extracted_body", contentLevel: "partial" },
       { contentKind: "rss_summary", contentLevel: "partial" },
       { contentKind: "web_snippet", contentLevel: "partial" },
       { contentKind: "primary_document", contentLevel: "complete" },
@@ -119,9 +120,9 @@ describe("Article and evidence contracts", () => {
   it.each([
     ["rss_summary", "complete"],
     ["web_snippet", "complete"],
-    ["extracted_body", "partial"],
+    ["extracted_body", "complete"],
   ] as const)(
-    "rejects %s evidence with %s content level",
+    "rejects persistible %s evidence with %s content level",
     (contentKind, contentLevel) => {
       const result = createEvidenceFragment({
         ...validEvidenceInput,
@@ -138,6 +139,18 @@ describe("Article and evidence contracts", () => {
     },
   );
 
+  it.each([
+    ["provenance", { provenance: undefined }],
+    ["quality", { quality: undefined }],
+  ])("rejects evidence without valid %s", (_field, override) => {
+    const result = createEvidenceFragment({
+      ...validEvidenceInput,
+      ...override,
+    } as unknown as EvidenceFragmentSnapshot);
+
+    expect(isErr(result)).toBe(true);
+  });
+
   it("serializes and rehydrates stable snapshots without full article bodies", () => {
     const article = createArticle(validArticleInput);
     const evidence = createEvidenceFragment(validEvidenceInput);
@@ -151,16 +164,41 @@ describe("Article and evidence contracts", () => {
     const articleSnapshot = toArticleSnapshot(article.value);
     const evidenceSnapshot = toEvidenceFragmentSnapshot(evidence.value);
 
+    expect(isOk(evidenceSnapshot)).toBe(true);
+    if (!isOk(evidenceSnapshot)) {
+      return;
+    }
+
     expect(articleSnapshot).not.toHaveProperty("body");
     expect(articleSnapshot).not.toHaveProperty("extractedBody");
-    expect(evidenceSnapshot).not.toHaveProperty("body");
-    expect(evidenceSnapshot).not.toHaveProperty("extractedBody");
+    expect(evidenceSnapshot.value).not.toHaveProperty("body");
+    expect(evidenceSnapshot.value).not.toHaveProperty("extractedBody");
     expect(JSON.parse(JSON.stringify(articleSnapshot))).toEqual(articleSnapshot);
-    expect(JSON.parse(JSON.stringify(evidenceSnapshot))).toEqual(
-      evidenceSnapshot,
+    expect(JSON.parse(JSON.stringify(evidenceSnapshot.value))).toEqual(
+      evidenceSnapshot.value,
     );
     expect(isOk(createArticle(articleSnapshot))).toBe(true);
-    expect(isOk(createEvidenceFragment(evidenceSnapshot))).toBe(true);
+    expect(isOk(createEvidenceFragment(evidenceSnapshot.value))).toBe(true);
+  });
+
+  it("does not serialize complete extracted article bodies as persistible evidence snapshots", () => {
+    const completeExtractedBody: EvidenceFragment = {
+      id: "55555555-5555-4555-8555-555555555555",
+      text: "Texto completo extraido del articulo que no debe persistirse.",
+      provenance: {
+        articleId: validArticleInput.id,
+        sourceId: validArticleInput.sourceId,
+        url: validArticleInput.url,
+        contentKind: "extracted_body",
+      },
+      quality: {
+        contentLevel: "complete",
+      },
+    } as EvidenceFragment;
+
+    const result = toEvidenceFragmentSnapshot(completeExtractedBody);
+
+    expect(isErr(result)).toBe(true);
   });
 
   it("creates statements with attribution and origin evidence reference", () => {
@@ -178,6 +216,7 @@ describe("Article and evidence contracts", () => {
   it.each([
     ["text", { text: " " }],
     ["attribution", { attribution: "" }],
+    ["originReference", { originReference: undefined }],
     [
       "originReference",
       { originReference: { evidenceFragmentId: "not-a-uuid" } },
@@ -186,7 +225,7 @@ describe("Article and evidence contracts", () => {
     const result = createArticleStatement({
       ...validStatementInput,
       ...override,
-    });
+    } as unknown as ArticleStatementSnapshot);
 
     expect(isErr(result)).toBe(true);
   });

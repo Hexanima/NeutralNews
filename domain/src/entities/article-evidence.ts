@@ -102,6 +102,7 @@ export type ArticleEvidenceField =
   | "language"
   | "publishedAt"
   | "text"
+  | "provenance"
   | "contentKind"
   | "contentLevel"
   | "quality"
@@ -143,7 +144,12 @@ const contentKinds = new Set<string>([
 
 const contentLevels = new Set<string>(["complete", "partial"]);
 
+type UnknownRecord = Record<string, unknown>;
+
 const isString = (value: unknown): value is string => typeof value === "string";
+
+const isRecord = (value: unknown): value is UnknownRecord =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
 
 const invalidValue = (field: ArticleEvidenceField, value: unknown) =>
   new InvalidArticleEvidenceValueError(field, value);
@@ -236,20 +242,42 @@ const createContentLevel = (
   return ok(value as EvidenceContentLevel);
 };
 
-const evidenceLevelMatchesKind = (
+const createRecord = (
+  field: "provenance" | "quality" | "originReference",
+  value: unknown,
+): Result<UnknownRecord, InvalidArticleEvidenceValueError> => {
+  if (!isRecord(value)) {
+    return err(invalidValue(field, value));
+  }
+
+  return ok(value);
+};
+
+const persistibleEvidenceLevelMatchesKind = (
   contentKind: EvidenceContentKind,
   contentLevel: EvidenceContentLevel,
 ) => {
-  if (contentKind === "rss_summary" || contentKind === "web_snippet") {
+  if (
+    contentKind === "extracted_body" ||
+    contentKind === "rss_summary" ||
+    contentKind === "web_snippet"
+  ) {
     return contentLevel === "partial";
-  }
-
-  if (contentKind === "extracted_body") {
-    return contentLevel === "complete";
   }
 
   return true;
 };
+
+const invalidEvidenceQuality = (
+  contentKind: EvidenceContentKind,
+  contentLevel: EvidenceContentLevel,
+) =>
+  new InvalidArticleEvidenceError([
+    invalidValue("quality", {
+      contentKind,
+      contentLevel,
+    }),
+  ]);
 
 export const createArticle = (
   snapshot: ArticleSnapshot,
@@ -298,17 +326,24 @@ export const toArticleSnapshot = (article: Article): ArticleSnapshot => ({
 export const createEvidenceFragment = (
   snapshot: EvidenceFragmentSnapshot,
 ): Result<EvidenceFragment, InvalidArticleEvidenceError> => {
+  const provenance = createRecord("provenance", snapshot.provenance);
+  const quality = createRecord("quality", snapshot.quality);
+  const provenanceValue = provenance.ok ? provenance.value : {};
+  const qualityValue = quality.ok ? quality.value : {};
+
   const id = createUuid("id", snapshot.id);
   const text = createNonEmptyText("text", snapshot.text);
-  const articleId = createUuid("articleId", snapshot.provenance.articleId);
-  const sourceId = createUuid("sourceId", snapshot.provenance.sourceId);
-  const url = createArticleUrl(snapshot.provenance.url);
-  const contentKind = createContentKind(snapshot.provenance.contentKind);
-  const contentLevel = createContentLevel(snapshot.quality.contentLevel);
+  const articleId = createUuid("articleId", provenanceValue.articleId);
+  const sourceId = createUuid("sourceId", provenanceValue.sourceId);
+  const url = createArticleUrl(provenanceValue.url);
+  const contentKind = createContentKind(provenanceValue.contentKind);
+  const contentLevel = createContentLevel(qualityValue.contentLevel);
 
   if (
     !id.ok ||
     !text.ok ||
+    !provenance.ok ||
+    !quality.ok ||
     !articleId.ok ||
     !sourceId.ok ||
     !url.ok ||
@@ -320,6 +355,8 @@ export const createEvidenceFragment = (
         collectErrors([
           id,
           text,
+          provenance,
+          quality,
           articleId,
           sourceId,
           url,
@@ -330,15 +367,8 @@ export const createEvidenceFragment = (
     );
   }
 
-  if (!evidenceLevelMatchesKind(contentKind.value, contentLevel.value)) {
-    return err(
-      new InvalidArticleEvidenceError([
-        invalidValue("quality", {
-          contentKind: contentKind.value,
-          contentLevel: contentLevel.value,
-        }),
-      ]),
-    );
+  if (!persistibleEvidenceLevelMatchesKind(contentKind.value, contentLevel.value)) {
+    return err(invalidEvidenceQuality(contentKind.value, contentLevel.value));
   }
 
   return ok({
@@ -358,35 +388,63 @@ export const createEvidenceFragment = (
 
 export const toEvidenceFragmentSnapshot = (
   evidence: EvidenceFragment,
-): EvidenceFragmentSnapshot => ({
-  id: evidence.id,
-  text: evidence.text,
-  provenance: {
-    articleId: evidence.provenance.articleId,
-    sourceId: evidence.provenance.sourceId,
-    url: evidence.provenance.url,
-    contentKind: evidence.provenance.contentKind,
-  },
-  quality: {
-    contentLevel: evidence.quality.contentLevel,
-  },
-});
+): Result<EvidenceFragmentSnapshot, InvalidArticleEvidenceError> => {
+  if (
+    !persistibleEvidenceLevelMatchesKind(
+      evidence.provenance.contentKind,
+      evidence.quality.contentLevel,
+    )
+  ) {
+    return err(
+      invalidEvidenceQuality(
+        evidence.provenance.contentKind,
+        evidence.quality.contentLevel,
+      ),
+    );
+  }
+
+  return ok({
+    id: evidence.id,
+    text: evidence.text,
+    provenance: {
+      articleId: evidence.provenance.articleId,
+      sourceId: evidence.provenance.sourceId,
+      url: evidence.provenance.url,
+      contentKind: evidence.provenance.contentKind,
+    },
+    quality: {
+      contentLevel: evidence.quality.contentLevel,
+    },
+  });
+};
 
 export const createArticleStatement = (
   snapshot: ArticleStatementSnapshot,
 ): Result<ArticleStatement, InvalidArticleEvidenceError> => {
+  const originReference = createRecord(
+    "originReference",
+    snapshot.originReference,
+  );
+  const originReferenceValue = originReference.ok ? originReference.value : {};
+
   const id = createUuid("id", snapshot.id);
   const text = createNonEmptyText("text", snapshot.text);
   const attribution = createNonEmptyText("attribution", snapshot.attribution);
   const evidenceFragmentId = createUuid(
     "evidenceFragmentId",
-    snapshot.originReference.evidenceFragmentId,
+    originReferenceValue.evidenceFragmentId,
   );
 
-  if (!id.ok || !text.ok || !attribution.ok || !evidenceFragmentId.ok) {
+  if (
+    !id.ok ||
+    !text.ok ||
+    !attribution.ok ||
+    !originReference.ok ||
+    !evidenceFragmentId.ok
+  ) {
     return err(
       new InvalidArticleEvidenceError(
-        collectErrors([id, text, attribution, evidenceFragmentId]),
+        collectErrors([id, text, attribution, originReference, evidenceFragmentId]),
       ),
     );
   }
