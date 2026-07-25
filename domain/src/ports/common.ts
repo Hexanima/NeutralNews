@@ -1,4 +1,5 @@
 import { TaggedError } from "../types/error.js";
+import type { AiCapabilityUnavailableError } from "../ai/index.js";
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue =
@@ -63,19 +64,6 @@ export class ExternalPortError extends TaggedError<"ExternalPortError"> {
   ) {
     super("ExternalPortError");
     this.message = `${operationName} failed: ${category}`;
-  }
-}
-
-export class AiCapabilityUnavailableError extends TaggedError<"AiCapabilityUnavailable"> {
-  public readonly type = "AiCapabilityUnavailable";
-
-  constructor(
-    public readonly providerId: string,
-    public readonly modelId: string,
-    public readonly capability: string,
-  ) {
-    super("AiCapabilityUnavailable");
-    this.message = `${providerId}/${modelId} does not provide ${capability}`;
   }
 }
 

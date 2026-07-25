@@ -1,3 +1,4 @@
+import type { AiCapability, AiModelSelection } from "../ai/index.js";
 import type { ArticleUrl } from "../entities/article-evidence.js";
 import type { AsyncResult } from "../types/result.js";
 import type {
@@ -5,18 +6,6 @@ import type {
   LimitedPortOperationOptions,
   PortError,
 } from "./common.js";
-
-export type AiCapability =
-  | "structured_outputs"
-  | "web_search"
-  | "reasoning_low"
-  | "reasoning_medium"
-  | "reasoning_high";
-
-export interface AiModelSelection {
-  providerId: string;
-  modelId: string;
-}
 
 export interface AiCitation {
   url: ArticleUrl;
