@@ -40,32 +40,56 @@ export interface EditorialSourceReferenceSnapshot {
   evidenceFragmentIds: readonly string[];
 }
 
-export interface EditorialClaim {
+export interface EditorialMatch {
   id: UUID;
   text: string;
   sourceIds: readonly UUID[];
   evidenceFragmentIds: readonly UUID[];
 }
 
-export interface EditorialClaimSnapshot {
+export interface EditorialMatchSnapshot {
   id: string;
   text: string;
   sourceIds: readonly string[];
   evidenceFragmentIds: readonly string[];
 }
 
+export interface EditorialDivergencePosition {
+  text: string;
+  sourceIds: readonly UUID[];
+  evidenceFragmentIds: readonly UUID[];
+}
+
+export interface EditorialDivergencePositionSnapshot {
+  text: string;
+  sourceIds: readonly string[];
+  evidenceFragmentIds: readonly string[];
+}
+
+export interface EditorialDivergence {
+  id: UUID;
+  text: string;
+  positions: readonly EditorialDivergencePosition[];
+}
+
+export interface EditorialDivergenceSnapshot {
+  id: string;
+  text: string;
+  positions: readonly EditorialDivergencePositionSnapshot[];
+}
+
 export interface TriangulationResult {
   summary: string;
-  matches: readonly EditorialClaim[];
-  divergences: readonly EditorialClaim[];
+  matches: readonly EditorialMatch[];
+  divergences: readonly EditorialDivergence[];
   sources: readonly EditorialSourceReference[];
   warnings: readonly EditorialWarning[];
 }
 
 export interface TriangulationResultSnapshot {
   summary: string;
-  matches: readonly EditorialClaimSnapshot[];
-  divergences: readonly EditorialClaimSnapshot[];
+  matches: readonly EditorialMatchSnapshot[];
+  divergences: readonly EditorialDivergenceSnapshot[];
   sources: readonly EditorialSourceReferenceSnapshot[];
   warnings: readonly EditorialWarningSnapshot[];
 }
@@ -169,6 +193,7 @@ export type EditorialResultField =
   | "divergences"
   | "sources"
   | "warnings"
+  | "positions"
   | "kind"
   | "message"
   | "sourceIds"
@@ -520,11 +545,11 @@ const createSourceReferences = (
   return ok(created.map((result) => resultValue(result)));
 };
 
-const createEditorialClaim = (
-  snapshot: EditorialClaimSnapshot,
+const createEditorialMatch = (
+  snapshot: EditorialMatchSnapshot,
   knownSourceIds: ReadonlySet<string>,
   knownEvidenceFragmentIds: ReadonlySet<string>,
-): Result<EditorialClaim, InvalidEditorialResultError> => {
+): Result<EditorialMatch, InvalidEditorialResultError> => {
   const record = createRecord("result", snapshot);
 
   if (!record.ok) {
@@ -558,7 +583,7 @@ const createEditorialClaim = (
     ),
   ];
 
-  if (validationValue(sourceIds).length === 0) {
+  if (new Set(validationValue(sourceIds)).size < 2) {
     referenceErrors.push(invalidValue("sourceIds", validationValue(sourceIds)));
   }
 
@@ -580,21 +605,173 @@ const createEditorialClaim = (
   });
 };
 
-const createEditorialClaims = (
-  field: "matches" | "divergences",
+const createEditorialMatches = (
   value: unknown,
   knownSourceIds: ReadonlySet<string>,
   knownEvidenceFragmentIds: ReadonlySet<string>,
-): Result<readonly EditorialClaim[], InvalidEditorialResultError> => {
-  const claims = createArray(field, value);
+): Result<readonly EditorialMatch[], InvalidEditorialResultError> => {
+  const matches = createArray("matches", value);
 
-  if (!claims.ok) {
-    return err(new InvalidEditorialResultError([claims.error]));
+  if (!matches.ok) {
+    return err(new InvalidEditorialResultError([matches.error]));
   }
 
-  const created = claims.value.map((claim) =>
-    createEditorialClaim(
-      claim as EditorialClaimSnapshot,
+  const created = matches.value.map((match) =>
+    createEditorialMatch(
+      match as EditorialMatchSnapshot,
+      knownSourceIds,
+      knownEvidenceFragmentIds,
+    ),
+  );
+  const errors = created.flatMap((result) =>
+    result.ok ? [] : result.error.errors,
+  );
+
+  if (errors.length > 0) {
+    return err(new InvalidEditorialResultError(errors));
+  }
+
+  return ok(created.map((result) => resultValue(result)));
+};
+
+const createEditorialDivergencePosition = (
+  snapshot: EditorialDivergencePositionSnapshot,
+  knownSourceIds: ReadonlySet<string>,
+  knownEvidenceFragmentIds: ReadonlySet<string>,
+): Result<EditorialDivergencePosition, InvalidEditorialResultError> => {
+  const record = createRecord("positions", snapshot);
+
+  if (!record.ok) {
+    return err(new InvalidEditorialResultError([record.error]));
+  }
+
+  const positionValue = record.value;
+  const text = createNonEmptyText("text", positionValue.text);
+  const sourceIds = createUuidArray("sourceIds", positionValue.sourceIds);
+  const evidenceFragmentIds = createUuidArray(
+    "evidenceFragmentIds",
+    positionValue.evidenceFragmentIds,
+  );
+  const valueErrors = [
+    ...collectErrors([text]),
+    ...(sourceIds.ok ? [] : sourceIds.errors),
+    ...(evidenceFragmentIds.ok ? [] : evidenceFragmentIds.errors),
+  ];
+
+  if (valueErrors.length > 0) {
+    return err(new InvalidEditorialResultError(valueErrors));
+  }
+
+  const referenceErrors = [
+    ...validateKnownIds("sourceIds", validationValue(sourceIds), knownSourceIds),
+    ...validateKnownIds(
+      "evidenceFragmentIds",
+      validationValue(evidenceFragmentIds),
+      knownEvidenceFragmentIds,
+    ),
+  ];
+
+  if (validationValue(sourceIds).length === 0) {
+    referenceErrors.push(invalidValue("sourceIds", validationValue(sourceIds)));
+  }
+
+  if (validationValue(evidenceFragmentIds).length === 0) {
+    referenceErrors.push(
+      invalidValue("evidenceFragmentIds", validationValue(evidenceFragmentIds)),
+    );
+  }
+
+  if (referenceErrors.length > 0) {
+    return err(new InvalidEditorialResultError(referenceErrors));
+  }
+
+  return ok({
+    text: resultValue(text),
+    sourceIds: validationValue(sourceIds),
+    evidenceFragmentIds: validationValue(evidenceFragmentIds),
+  });
+};
+
+const createEditorialDivergence = (
+  snapshot: EditorialDivergenceSnapshot,
+  knownSourceIds: ReadonlySet<string>,
+  knownEvidenceFragmentIds: ReadonlySet<string>,
+): Result<EditorialDivergence, InvalidEditorialResultError> => {
+  const record = createRecord("result", snapshot);
+
+  if (!record.ok) {
+    return err(new InvalidEditorialResultError([record.error]));
+  }
+
+  const divergenceValue = record.value;
+  const id = createUuid("id", divergenceValue.id);
+  const text = createNonEmptyText("text", divergenceValue.text);
+  const positions = createArray("positions", divergenceValue.positions);
+
+  if (!positions.ok) {
+    return err(
+      new InvalidEditorialResultError([
+        ...collectErrors([id, text]),
+        positions.error,
+      ]),
+    );
+  }
+
+  const createdPositions = positions.value.map((position) =>
+    createEditorialDivergencePosition(
+      position as EditorialDivergencePositionSnapshot,
+      knownSourceIds,
+      knownEvidenceFragmentIds,
+    ),
+  );
+  const positionValues = createdPositions
+    .filter((result): result is { ok: true; value: EditorialDivergencePosition } =>
+      result.ok,
+    )
+    .map((result) => result.value);
+  const contrastSourceIds = new Set(
+    positionValues.flatMap((position) => position.sourceIds),
+  );
+  const errors = [
+    ...collectErrors([id, text]),
+    ...createdPositions.flatMap((result) =>
+      result.ok ? [] : result.error.errors,
+    ),
+  ];
+
+  if (positionValues.length < 2) {
+    errors.push(invalidValue("positions", positions.value));
+  }
+
+  if (contrastSourceIds.size < 2) {
+    errors.push(invalidValue("sourceIds", positionValues.flatMap((position) => position.sourceIds)));
+  }
+
+  if (errors.length > 0) {
+    return err(new InvalidEditorialResultError(errors));
+  }
+
+  return ok({
+    id: resultValue(id),
+    text: resultValue(text),
+    positions: positionValues,
+  });
+};
+
+const createEditorialDivergences = (
+  value: unknown,
+  knownSourceIds: ReadonlySet<string>,
+  knownEvidenceFragmentIds: ReadonlySet<string>,
+): Result<readonly EditorialDivergence[], InvalidEditorialResultError> => {
+  const divergences = createArray("divergences", value);
+
+  if (!divergences.ok) {
+    return err(new InvalidEditorialResultError([divergences.error]));
+  }
+
+  const created = divergences.value.map((divergence) =>
+    createEditorialDivergence(
+      divergence as EditorialDivergenceSnapshot,
       knownSourceIds,
       knownEvidenceFragmentIds,
     ),
@@ -629,14 +806,12 @@ export const createTriangulationResult = (
   const knownEvidenceFragmentIds = new Set(
     sourceValues.flatMap((source) => source.evidenceFragmentIds),
   );
-  const matches = createEditorialClaims(
-    "matches",
+  const matches = createEditorialMatches(
     snapshot.matches,
     knownSourceIds,
     knownEvidenceFragmentIds,
   );
-  const divergences = createEditorialClaims(
-    "divergences",
+  const divergences = createEditorialDivergences(
     snapshot.divergences,
     knownSourceIds,
     knownEvidenceFragmentIds,
@@ -658,12 +833,10 @@ export const createTriangulationResult = (
     return err(new InvalidEditorialResultError(valueErrors));
   }
 
-  const emptyResult =
-    resultValue(matches).length === 0 &&
-    resultValue(divergences).length === 0 &&
-    resultValue(sources).length === 0;
+  const incompleteResult =
+    resultValue(matches).length === 0 && resultValue(divergences).length === 0;
 
-  if (emptyResult && !hasPartialTriangulationWarning(resultValue(warnings))) {
+  if (incompleteResult && !hasPartialTriangulationWarning(resultValue(warnings))) {
     return err(
       new InvalidEditorialResultError([
         invalidValue("warnings", snapshot.warnings),
@@ -684,8 +857,8 @@ export const toTriangulationResultSnapshot = (
   result: TriangulationResult,
 ): TriangulationResultSnapshot => ({
   summary: result.summary,
-  matches: result.matches.map(toEditorialClaimSnapshot),
-  divergences: result.divergences.map(toEditorialClaimSnapshot),
+  matches: result.matches.map(toEditorialMatchSnapshot),
+  divergences: result.divergences.map(toEditorialDivergenceSnapshot),
   sources: result.sources.map(toEditorialSourceReferenceSnapshot),
   warnings: result.warnings.map(toEditorialWarningSnapshot),
 });
@@ -1023,13 +1196,25 @@ export const toFeedResultSnapshot = (result: FeedResult): FeedResultSnapshot => 
   warnings: result.warnings.map(toEditorialWarningSnapshot),
 });
 
-const toEditorialClaimSnapshot = (
-  claim: EditorialClaim,
-): EditorialClaimSnapshot => ({
-  id: claim.id,
-  text: claim.text,
-  sourceIds: claim.sourceIds,
-  evidenceFragmentIds: claim.evidenceFragmentIds,
+const toEditorialMatchSnapshot = (
+  match: EditorialMatch,
+): EditorialMatchSnapshot => ({
+  id: match.id,
+  text: match.text,
+  sourceIds: match.sourceIds,
+  evidenceFragmentIds: match.evidenceFragmentIds,
+});
+
+const toEditorialDivergenceSnapshot = (
+  divergence: EditorialDivergence,
+): EditorialDivergenceSnapshot => ({
+  id: divergence.id,
+  text: divergence.text,
+  positions: divergence.positions.map((position) => ({
+    text: position.text,
+    sourceIds: position.sourceIds,
+    evidenceFragmentIds: position.evidenceFragmentIds,
+  })),
 });
 
 const toEditorialSourceReferenceSnapshot = (

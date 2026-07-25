@@ -50,9 +50,19 @@ const validTriangulationInput: TriangulationResultSnapshot = {
   divergences: [
     {
       id: "66666666-6666-4666-8666-666666666666",
-      text: "Una cobertura enfatiza el costo y otra el alcance territorial.",
-      sourceIds: [sourceId, secondSourceId],
-      evidenceFragmentIds: [evidenceFragmentId, secondEvidenceFragmentId],
+      text: "Las coberturas atribuyen alcances distintos a la medida.",
+      positions: [
+        {
+          text: "Una cobertura enfatiza el costo fiscal.",
+          sourceIds: [sourceId],
+          evidenceFragmentIds: [evidenceFragmentId],
+        },
+        {
+          text: "Otra cobertura enfatiza el alcance territorial.",
+          sourceIds: [secondSourceId],
+          evidenceFragmentIds: [secondEvidenceFragmentId],
+        },
+      ],
     },
   ],
   sources: validSources,
@@ -124,6 +134,10 @@ describe("Editorial result contracts", () => {
       expect(result.value.summary).toBe(validTriangulationInput.summary);
       expect(result.value.matches).toHaveLength(1);
       expect(result.value.divergences).toHaveLength(1);
+      expect(result.value.divergences[0]?.positions).toHaveLength(2);
+      expect(result.value.divergences[0]?.positions[0]?.sourceIds).toEqual([
+        sourceId,
+      ]);
       expect(result.value.sources).toHaveLength(2);
       expect(result.value.warnings[0]?.kind).toBe("asymmetric_coverage");
     }
@@ -217,6 +231,71 @@ describe("Editorial result contracts", () => {
           sourceIds: ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"],
         },
       ],
+    });
+
+    expect(isErr(result)).toBe(true);
+  });
+
+  it("rejects a match supported by a single source", () => {
+    const result = createTriangulationResult({
+      ...validTriangulationInput,
+      matches: [
+        {
+          ...validTriangulationInput.matches[0],
+          sourceIds: [sourceId],
+          evidenceFragmentIds: [evidenceFragmentId],
+        },
+      ],
+    });
+
+    expect(isErr(result)).toBe(true);
+  });
+
+  it("rejects a divergence without at least two attributed positions", () => {
+    const result = createTriangulationResult({
+      ...validTriangulationInput,
+      divergences: [
+        {
+          ...validTriangulationInput.divergences[0],
+          positions: [validTriangulationInput.divergences[0].positions[0]],
+        },
+      ],
+    });
+
+    expect(isErr(result)).toBe(true);
+  });
+
+  it("rejects a divergence whose positions do not contrast at least two sources", () => {
+    const result = createTriangulationResult({
+      ...validTriangulationInput,
+      divergences: [
+        {
+          ...validTriangulationInput.divergences[0],
+          positions: [
+            {
+              text: "Una cobertura enfatiza el costo fiscal.",
+              sourceIds: [sourceId],
+              evidenceFragmentIds: [evidenceFragmentId],
+            },
+            {
+              text: "La misma fuente tambien menciona alcance territorial.",
+              sourceIds: [sourceId],
+              evidenceFragmentIds: [evidenceFragmentId],
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(isErr(result)).toBe(true);
+  });
+
+  it("rejects sourced triangulation without findings or partial coverage warning", () => {
+    const result = createTriangulationResult({
+      ...validTriangulationInput,
+      matches: [],
+      divergences: [],
+      warnings: [],
     });
 
     expect(isErr(result)).toBe(true);
