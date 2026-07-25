@@ -253,19 +253,26 @@ const createRecord = (
   return ok(value);
 };
 
-const persistibleEvidenceLevelMatchesKind = (
+const evidenceLevelMatchesKind = (
   contentKind: EvidenceContentKind,
   contentLevel: EvidenceContentLevel,
 ) => {
-  if (
-    contentKind === "extracted_body" ||
-    contentKind === "rss_summary" ||
-    contentKind === "web_snippet"
-  ) {
+  if (contentKind === "rss_summary" || contentKind === "web_snippet") {
     return contentLevel === "partial";
   }
 
   return true;
+};
+
+const persistibleEvidenceLevelMatchesKind = (
+  contentKind: EvidenceContentKind,
+  contentLevel: EvidenceContentLevel,
+) => {
+  if (contentKind === "extracted_body") {
+    return contentLevel === "partial";
+  }
+
+  return evidenceLevelMatchesKind(contentKind, contentLevel);
 };
 
 const invalidEvidenceQuality = (
@@ -367,7 +374,7 @@ export const createEvidenceFragment = (
     );
   }
 
-  if (!persistibleEvidenceLevelMatchesKind(contentKind.value, contentLevel.value)) {
+  if (!evidenceLevelMatchesKind(contentKind.value, contentLevel.value)) {
     return err(invalidEvidenceQuality(contentKind.value, contentLevel.value));
   }
 
@@ -458,3 +465,4 @@ export const createArticleStatement = (
     },
   });
 };
+

@@ -86,12 +86,12 @@ describe("Article and evidence contracts", () => {
     expect(isErr(result)).toBe(true);
   });
 
-  it("creates persistible evidence fragments for every supported content kind", () => {
+  it("creates evidence fragments for every supported content kind", () => {
     const cases: Array<{
       contentKind: EvidenceContentKind;
       contentLevel: "complete" | "partial";
     }> = [
-      { contentKind: "extracted_body", contentLevel: "partial" },
+      { contentKind: "extracted_body", contentLevel: "complete" },
       { contentKind: "rss_summary", contentLevel: "partial" },
       { contentKind: "web_snippet", contentLevel: "partial" },
       { contentKind: "primary_document", contentLevel: "complete" },
@@ -120,9 +120,8 @@ describe("Article and evidence contracts", () => {
   it.each([
     ["rss_summary", "complete"],
     ["web_snippet", "complete"],
-    ["extracted_body", "complete"],
   ] as const)(
-    "rejects persistible %s evidence with %s content level",
+    "rejects non-extracted partial evidence marked as %s with %s content level",
     (contentKind, contentLevel) => {
       const result = createEvidenceFragment({
         ...validEvidenceInput,
@@ -230,3 +229,4 @@ describe("Article and evidence contracts", () => {
     expect(isErr(result)).toBe(true);
   });
 });
+
