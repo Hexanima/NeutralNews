@@ -16,7 +16,11 @@ import {
   type Result,
 } from "app-domain";
 
-import { loadApiConfig, type ApiConfig } from "./config.js";
+import {
+  loadApiConfig,
+  loadRuntimeEnvironment,
+  type ApiConfig,
+} from "./config.js";
 import {
   executeExternalOperation,
   type ExecuteExternalOperationOptions,
@@ -299,7 +303,7 @@ export const resolveApiPort = (
 ): number => Number(environment.API_PORT ?? environment.PORT ?? 3000);
 
 export const startApp = (options: StartAppOptions = {}) => {
-  const environment = options.environment ?? process.env;
+  const environment = options.environment ?? loadRuntimeEnvironment();
   const config = loadApiConfig(environment);
   const server = options.createServer?.() ?? createApp({ config });
 

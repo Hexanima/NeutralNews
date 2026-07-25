@@ -1,5 +1,6 @@
-import { statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 export type AiProviderStatus = "not_configured";
 
@@ -47,6 +48,104 @@ const bcryptHashPattern = /^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/;
 const argon2HashPattern =
   /^\$argon2(?:id|i)\$v=\d+\$m=\d+,t=\d+,p=\d+\$[A-Za-z0-9+/]+={0,2}\$[A-Za-z0-9+/]+={0,2}$/;
 const minimumSessionSecretLength = 32;
+const defaultEnvironmentFilePath = fileURLToPath(
+  new URL("../../../.env", import.meta.url),
+);
+const environmentVariablePattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const stripInlineComment = (rawValue: string): string => {
+  let quote: "'" | '"' | null = null;
+
+  for (let index = 0; index < rawValue.length; index += 1) {
+    const character = rawValue.charAt(index);
+
+    if (quote !== null) {
+      if (character === quote) {
+        quote = null;
+      }
+
+      continue;
+    }
+
+    if (character === "'" || character === '"') {
+      quote = character;
+      continue;
+    }
+
+    if (
+      character === "#" &&
+      (index === 0 || /\s/.test(rawValue.charAt(index - 1)))
+    ) {
+      return rawValue.slice(0, index);
+    }
+  }
+
+  return rawValue;
+};
+
+const parseEnvironmentFile = (contents: string): NodeJS.ProcessEnv =>
+  contents.split(/\r?\n/).reduce<NodeJS.ProcessEnv>((environment, rawLine) => {
+    const line = rawLine.trim();
+
+    if (line === "" || line.startsWith("#")) {
+      return environment;
+    }
+
+    const assignment = line.startsWith("export ")
+      ? line.slice("export ".length).trimStart()
+      : line;
+    const separatorIndex = assignment.indexOf("=");
+
+    if (separatorIndex <= 0) {
+      return environment;
+    }
+
+    const variable = assignment.slice(0, separatorIndex).trim();
+
+    if (!environmentVariablePattern.test(variable)) {
+      return environment;
+    }
+
+    let value = stripInlineComment(assignment.slice(separatorIndex + 1)).trim();
+
+    if (
+      value.length >= 2 &&
+      ((value.startsWith("\"") && value.endsWith("\"")) ||
+        (value.startsWith("'") && value.endsWith("'")))
+    ) {
+      value = value.slice(1, -1);
+    }
+
+    environment[variable] = value;
+
+    return environment;
+  }, {});
+
+export const loadEnvironmentFile = (
+  baseEnvironment: NodeJS.ProcessEnv,
+  environmentFilePath: string,
+): NodeJS.ProcessEnv => {
+  if (!existsSync(environmentFilePath)) {
+    return { ...baseEnvironment };
+  }
+
+  const fileEnvironment = parseEnvironmentFile(
+    readFileSync(environmentFilePath, "utf8"),
+  );
+  const environment = { ...fileEnvironment };
+
+  for (const [variable, value] of Object.entries(baseEnvironment)) {
+    if (value !== undefined) {
+      environment[variable] = value;
+    }
+  }
+
+  return environment;
+};
+
+export const loadRuntimeEnvironment = (
+  baseEnvironment: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv =>
+  loadEnvironmentFile(baseEnvironment, defaultEnvironmentFilePath);
 
 const readRequired = (
   environment: NodeJS.ProcessEnv,

@@ -5,7 +5,11 @@ import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { ConfigurationError, loadApiConfig } from "./config.js";
+import {
+  ConfigurationError,
+  loadApiConfig,
+  loadEnvironmentFile,
+} from "./config.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -58,6 +62,34 @@ describe("api configuration", () => {
         retryDelayMs: 250,
       },
     });
+  });
+
+  it("loads runtime variables from an environment file without overriding process variables", async () => {
+    const directory = await createDataDirectory();
+    const envFilePath = join(directory, ".env");
+    const dataDirectory = join(directory, "runtime-data");
+
+    await writeFile(
+      envFilePath,
+      [
+        `NEUTRALNEWS_DATA_DIR=${dataDirectory}`,
+        `NEUTRALNEWS_ACCESS_PASSWORD_HASH=${validPasswordHash} # local note`,
+        `NEUTRALNEWS_SESSION_SECRET=${validSessionSecret}`,
+        "API_PORT=4100",
+        "export NEUTRALNEWS_EXTERNAL_MAX_ATTEMPTS=2",
+        "NEUTRALNEWS_CREDENTIAL_VAULT_KEY='quoted # vault key' # local note",
+      ].join("\n"),
+    );
+
+    const environment = loadEnvironmentFile({ API_PORT: "4200" }, envFilePath);
+    const config = loadApiConfig(environment);
+
+    expect(config.port).toBe(4200);
+    expect(config.dataDirectory).toBe(dataDirectory);
+    expect(config.accessPasswordHash).toBe(validPasswordHash);
+    expect(config.sessionSecret).toBe(validSessionSecret);
+    expect(config.externalServices.maxAttempts).toBe(2);
+    expect(config.credentialVaultKey).toBe("quoted # vault key");
   });
 
   it("loads configurable external service policy values", async () => {
