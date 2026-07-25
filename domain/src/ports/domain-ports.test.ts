@@ -156,7 +156,13 @@ describe("domain ports", () => {
     const feedResult = await rss.readFeed({
       source,
       feedUrl: "https://example.com/feed.xml" as ArticleUrl,
-      options: { signal, timeoutMs: 1000, maxItems: 5, maxBytes: 4096 },
+      options: {
+        signal,
+        timeoutMs: 1000,
+        maxItems: 5,
+        maxBytes: 4096,
+        maxRedirects: 2,
+      },
     });
     const extractionResult = await extractor.extractArticle({
       article,
@@ -174,8 +180,19 @@ describe("domain ports", () => {
     expect(isOk(extractionResult)).toBe(true);
     expect(isOk(searchResult)).toBe(true);
     expect(rss.calls.readFeed[0]?.options?.maxItems).toBe(5);
+    expect(rss.calls.readFeed[0]?.options?.maxRedirects).toBe(2);
     expect(extractor.calls.extractArticle[0]?.options?.maxBytes).toBe(8192);
     expect(search.calls.search[0]?.allowedDomains).toEqual(["example.com"]);
+  });
+
+  it("allows external ports to receive redirect limits", () => {
+    const commonPortContract = readFileSync(
+      join(process.cwd(), "src", "ports", "common.ts"),
+      "utf8",
+    );
+
+    expect(commonPortContract).toContain("maxRedirects?: number | undefined");
+    expect(commonPortContract).toContain('"maxRedirects"');
   });
 
   it("passes provider, model, and required capabilities to AI and editorial ports", async () => {

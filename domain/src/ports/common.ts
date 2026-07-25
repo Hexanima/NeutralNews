@@ -15,6 +15,7 @@ export interface PortLimitOptions {
   maxItems?: number | undefined;
   maxBytes?: number | undefined;
   maxConcurrency?: number | undefined;
+  maxRedirects?: number | undefined;
 }
 
 export type LimitedPortOperationOptions = PortOperationOptions &
@@ -38,7 +39,8 @@ export class PortLimitExceededError extends TaggedError<"PortLimitExceeded"> {
       | "timeoutMs"
       | "maxItems"
       | "maxBytes"
-      | "maxConcurrency",
+      | "maxConcurrency"
+      | "maxRedirects",
   ) {
     super("PortLimitExceeded");
     this.message = `${operationName} exceeded ${limitName}`;
