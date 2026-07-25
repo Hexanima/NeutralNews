@@ -8,12 +8,12 @@ import type {
   RewriteResult,
   TriangulationResult,
 } from "../entities/editorial-result.js";
+import type { AiCapability, AiModelSelection } from "../ai/index.js";
 import type { AsyncResult } from "../types/result.js";
 import type {
   LimitedPortOperationOptions,
   PortError,
 } from "./common.js";
-import type { AiCapability, AiModelSelection } from "./ai-generation-port.js";
 
 export interface EditorialGenerationBaseInput {
   selection: AiModelSelection;
