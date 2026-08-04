@@ -33,6 +33,7 @@ interface LegacyNewsSourceConfigurationSnapshot {
 export interface EffectiveNewsSourceConfiguration {
   readonly schemaVersion: number;
   readonly configurationVersion: number;
+  readonly cacheVersion: string;
   readonly sources: readonly NewsSourceCatalogEntry[];
   readonly sourceOverrides: readonly NewsSourceConfigurationOverrideSnapshot[];
 }
@@ -296,6 +297,40 @@ export const createDefaultNewsSourceConfigurationSnapshot =
     sourceOverrides: [],
   });
 
+const stableStringify = (value: unknown): string => {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(",")}]`;
+  }
+
+  if (isRecord(value)) {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
+      .join(",")}}`;
+  }
+
+  return JSON.stringify(value);
+};
+
+const catalogFingerprint = (catalogSnapshot: NewsSourceCatalogSnapshot): string => {
+  let hash = 2166136261;
+  const serializedCatalog = stableStringify(catalogSnapshot);
+
+  for (let index = 0; index < serializedCatalog.length; index += 1) {
+    hash ^= serializedCatalog.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return (hash >>> 0).toString(16).padStart(8, "0");
+};
+
+const effectiveCacheVersion = (
+  catalogSnapshot: NewsSourceCatalogSnapshot,
+  configurationVersion: number,
+): string => `${catalogSnapshot.schemaVersion}:${catalogFingerprint(
+  catalogSnapshot,
+)}:${configurationVersion}`;
+
 export const createEffectiveNewsSourceConfiguration = (
   catalogSnapshot: NewsSourceCatalogSnapshot,
   localSnapshot: NewsSourceConfigurationSnapshot | null,
@@ -340,11 +375,14 @@ export const createEffectiveNewsSourceConfiguration = (
     return effectiveCatalog;
   }
 
+  const configurationVersion =
+    localSnapshot?.configurationVersion ??
+    initialNewsSourceConfigurationVersion;
+
   return ok({
     schemaVersion: effectiveCatalog.value.schemaVersion,
-    configurationVersion:
-      localSnapshot?.configurationVersion ??
-      initialNewsSourceConfigurationVersion,
+    configurationVersion,
+    cacheVersion: effectiveCacheVersion(catalogSnapshot, configurationVersion),
     sources: effectiveCatalog.value.sources,
     sourceOverrides,
   });

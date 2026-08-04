@@ -140,6 +140,42 @@ describe("news source effective configuration", () => {
     ]);
   });
 
+  it("changes the effective cache version when the base catalog changes", () => {
+    const localSnapshot: NewsSourceConfigurationSnapshot = {
+      schemaVersion: 2,
+      configurationVersion: 4,
+      sourceOverrides: [],
+    };
+    const changedCatalog = {
+      ...initialNewsSourceCatalogSnapshot,
+      sources: [
+        {
+          ...firstSource,
+          source: { ...firstSource.source, name: "Pagina/12 catalogo nuevo" },
+        },
+        ...initialNewsSourceCatalogSnapshot.sources.slice(1),
+      ],
+    };
+    const original = createEffectiveNewsSourceConfiguration(
+      initialNewsSourceCatalogSnapshot,
+      localSnapshot,
+    );
+    const changed = createEffectiveNewsSourceConfiguration(
+      changedCatalog,
+      localSnapshot,
+    );
+
+    expect(original.ok).toBe(true);
+    expect(changed.ok).toBe(true);
+    if (!isOk(original) || !isOk(changed)) {
+      throw new Error("expected valid effective configurations");
+    }
+
+    expect(changed.value.configurationVersion).toBe(
+      original.value.configurationVersion,
+    );
+    expect(changed.value.cacheVersion).not.toBe(original.value.cacheVersion);
+  });
   it("serializes an effective configuration back to a normalized local snapshot", () => {
     const configuration = effectiveFrom({
       schemaVersion: 2,
