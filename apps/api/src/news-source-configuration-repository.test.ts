@@ -187,6 +187,42 @@ describe("JSON news source configuration repository", () => {
     });
   });
 
+
+  it("recovers defaults when the local JSON violates the configuration schema", async () => {
+    const directory = await createTemporaryDirectory();
+    await mkdir(join(directory, "configuration"));
+    await writeFile(
+      join(directory, configPath),
+      `${JSON.stringify({
+        schemaVersion: 2,
+        configurationVersion: 9,
+        sourceOverrides: [
+          {
+            id: firstSource.source.id,
+            entry: manualSource,
+          },
+        ],
+      })}\n`,
+    );
+    const repository = createJsonNewsSourceConfigurationRepository(directory);
+
+    const result = await repository.getEffectiveConfiguration();
+
+    expect(result.ok).toBe(true);
+    if (!isOk(result)) {
+      throw result.error;
+    }
+
+    expect(result.value.configurationVersion).toBe(1);
+    expect(result.value.sources.map((entry) => entry.source.id)).toEqual(
+      initialNewsSourceCatalogSnapshot.sources.map((entry) => entry.source.id),
+    );
+    expect(await readStoredConfiguration(directory)).toEqual({
+      schemaVersion: 2,
+      configurationVersion: 1,
+      sourceOverrides: [],
+    });
+  });
   it("recovers defaults when the local JSON is corrupt and keeps a recoverable copy", async () => {
     const directory = await createTemporaryDirectory();
     await mkdir(join(directory, "configuration"));
@@ -213,5 +249,3 @@ describe("JSON news source configuration repository", () => {
     ).toBe(true);
   });
 });
-
-

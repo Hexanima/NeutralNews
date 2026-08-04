@@ -156,4 +156,3 @@ describe("news source effective configuration", () => {
     });
   });
 });
-

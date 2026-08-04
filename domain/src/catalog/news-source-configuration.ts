@@ -357,4 +357,3 @@ export const toNewsSourceConfigurationSnapshot = (
   configurationVersion: configuration.configurationVersion,
   sourceOverrides: configuration.sourceOverrides,
 });
-

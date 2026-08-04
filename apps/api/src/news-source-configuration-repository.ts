@@ -161,7 +161,10 @@ export const createJsonNewsSourceConfigurationRepository = (
     const snapshot = createNewsSourceConfigurationSnapshot(readResult.value);
 
     if (!snapshot.ok) {
-      return snapshot;
+      const defaultSnapshot = createDefaultNewsSourceConfigurationSnapshot();
+      const writeResult = await writeSnapshot(defaultSnapshot);
+
+      return writeResult.ok ? ok(defaultSnapshot) : writeResult;
     }
 
     if (
