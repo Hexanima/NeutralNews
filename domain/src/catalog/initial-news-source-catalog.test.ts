@@ -159,4 +159,10 @@ describe("initial news source catalog", () => {
     expect(invalidMode.ok).toBe(false);
     expect(missingFeedUrl.ok).toBe(false);
   });
+
+  it("rejects external catalog snapshots that are not objects", () => {
+    const result = createNewsSourceCatalog(null);
+
+    expect(result.ok).toBe(false);
+  });
 });

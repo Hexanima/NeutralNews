@@ -133,9 +133,42 @@ const createDiscovery = (
   return ok({ mode: "rss", feedUrl: feedUrl.value });
 };
 
+type CreatedCatalogEntry = {
+  readonly source: Result<
+    NewsSource,
+    InvalidNewsSourceError | InvalidNewsSourceCatalogValueError
+  >;
+  readonly discovery: Result<
+    NewsSourceDiscovery,
+    InvalidNewsSourceCatalogValueError
+  >;
+};
+
+const createCatalogEntry = (entry: unknown): CreatedCatalogEntry => {
+  if (!isRecord(entry)) {
+    return {
+      source: err(invalidValue("source", entry)),
+      discovery: err(invalidValue("discovery", entry)),
+    };
+  }
+
+  return {
+    source: isRecord(entry.source)
+      ? createNewsSource(entry.source as unknown as NewsSourceSnapshot)
+      : err(invalidValue("source", entry.source)),
+    discovery: createDiscovery(entry.discovery),
+  };
+};
+
 export const createNewsSourceCatalog = (
-  snapshot: NewsSourceCatalogSnapshot,
+  snapshot: unknown,
 ): Result<NewsSourceCatalog, InvalidNewsSourceCatalogError> => {
+  if (!isRecord(snapshot)) {
+    return err(
+      new InvalidNewsSourceCatalogError([invalidValue("sources", snapshot)]),
+    );
+  }
+
   const schemaVersion = createSchemaVersion(snapshot.schemaVersion);
   const sourceSnapshots = Array.isArray(snapshot.sources)
     ? snapshot.sources
@@ -152,10 +185,7 @@ export const createNewsSourceCatalog = (
     );
   }
 
-  const createdEntries = sourceSnapshots.map((entry) => ({
-    source: createNewsSource(entry.source),
-    discovery: createDiscovery(entry.discovery),
-  }));
+  const createdEntries = sourceSnapshots.map(createCatalogEntry);
   const ids = new Set<string>();
   const duplicateIds = new Set<string>();
 
