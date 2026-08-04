@@ -21,6 +21,7 @@ import {
   loadRuntimeEnvironment,
   type ApiConfig,
 } from "./config.js";
+import { handleConfigurationRequest } from "./configuration-endpoints.js";
 import {
   executeExternalOperation,
   type ExecuteExternalOperationOptions,
@@ -271,6 +272,12 @@ export const requestHandler = async (
       (() => createHealthResponse(options.config));
 
     sendJson(response, 200, await healthResponseFactory(context));
+    return;
+  }
+
+  if (
+    await handleConfigurationRequest(request, response, options.config)
+  ) {
     return;
   }
 
