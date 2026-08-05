@@ -7,6 +7,7 @@ import {
   type InvalidNewsSourceCatalogError,
   type NewsSourceCatalogEntry,
   type NewsSourceCatalogEntrySnapshot,
+  toNewsSourceSnapshot,
 } from "app-domain";
 
 import type { ApiConfig } from "./config.js";
@@ -130,7 +131,12 @@ const validateEntry = (
     };
   }
 
-  return value as NewsSourceCatalogEntrySnapshot;
+  const [entry] = catalog.value.sources;
+
+  return {
+    source: toNewsSourceSnapshot(entry!.source),
+    discovery: entry!.discovery,
+  };
 };
 
 const findEntry = (

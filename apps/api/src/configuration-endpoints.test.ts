@@ -190,6 +190,35 @@ describe("news source configuration HTTP endpoints", () => {
     ).toBe(1);
   });
 
+  it("rejects default source id collisions after backend normalization", async () => {
+    const environment = await createValidEnvironment();
+    const response = await fetchFromApp(
+      "/api/configuration/news-sources",
+      environment,
+      {
+        method: "POST",
+        json: {
+          ...manualSource,
+          source: {
+            ...manualSource.source,
+            id: ` ${firstDefaultSource.source.id} `,
+          },
+        },
+      },
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: {
+        code: "SourceIdAlreadyExists",
+        id: firstDefaultSource.source.id,
+      },
+    });
+    expect(
+      (await readStoredConfiguration(environment.NEUTRALNEWS_DATA_DIR!))
+        .configurationVersion,
+    ).toBe(1);
+  });
   it("edits an existing news source and rejects path and body id mismatches", async () => {
     const environment = await createValidEnvironment();
     const editedSource = {
