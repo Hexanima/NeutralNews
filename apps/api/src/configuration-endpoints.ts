@@ -5,8 +5,10 @@ import {
   initialNewsSourceCatalogSnapshot,
   type EffectiveNewsSourceConfiguration,
   type InvalidNewsSourceCatalogError,
+  type InvalidNewsSourceConfigurationError,
   type NewsSourceCatalogEntry,
   type NewsSourceCatalogEntrySnapshot,
+  type RegionalPreferencesSnapshot,
   toNewsSourceSnapshot,
 } from "app-domain";
 
@@ -14,6 +16,7 @@ import type { ApiConfig } from "./config.js";
 import { createJsonNewsSourceConfigurationRepository } from "./news-source-configuration-repository.js";
 
 const newsSourcesPath = "/api/configuration/news-sources";
+const regionalPreferencesPath = "/api/configuration/regional-preferences";
 const restoreDefaultsPath = `${newsSourcesPath}/restore-defaults`;
 const maxJsonBodyBytes = 64 * 1024;
 
@@ -31,6 +34,7 @@ interface ConfigurationResponseBody {
   configurationVersion: number;
   cacheVersion: string;
   sources: readonly NewsSourceCatalogEntry[];
+  regionalPreferences: RegionalPreferencesSnapshot;
 }
 
 class RequestBodyError extends Error {
@@ -58,6 +62,7 @@ const toConfigurationResponse = (
   configurationVersion: configuration.configurationVersion,
   cacheVersion: configuration.cacheVersion,
   sources: configuration.sources,
+  regionalPreferences: configuration.regionalPreferences,
 });
 
 const readJsonBody = async (request: IncomingMessage): Promise<unknown> => {
@@ -115,6 +120,24 @@ const validationDetails = (error: InvalidNewsSourceCatalogError): unknown[] => {
 
   return details;
 };
+
+const configurationValidationDetails = (
+  error: InvalidNewsSourceConfigurationError,
+): unknown[] =>
+  error.errors.map((configurationError) => {
+    if ("field" in configurationError) {
+      return {
+        type: configurationError.type,
+        field: configurationError.field,
+        value: configurationError.value,
+      };
+    }
+
+    return {
+      type: configurationError.type,
+      message: configurationError.message,
+    };
+  });
 
 const validateEntry = (
   value: unknown,
@@ -208,7 +231,11 @@ export const handleConfigurationRequest = async (
   const requestUrl = new URL(rawUrl, "http://127.0.0.1");
   const pathname = requestUrl.pathname;
 
-  if (pathname !== newsSourcesPath && !pathname.startsWith(`${newsSourcesPath}/`)) {
+  if (
+    pathname !== regionalPreferencesPath &&
+    pathname !== newsSourcesPath &&
+    !pathname.startsWith(`${newsSourcesPath}/`)
+  ) {
     return false;
   }
 
@@ -230,6 +257,40 @@ export const handleConfigurationRequest = async (
     }
 
     sendJson(response, 200, toConfigurationResponse(configuration.value));
+    return true;
+  }
+
+  if (pathname === regionalPreferencesPath && request.method === "PUT") {
+    let body: unknown;
+
+    try {
+      body = await readJsonBody(request);
+    } catch (error) {
+      sendBodyError(response, error as RequestBodyError);
+      return true;
+    }
+
+    const saved = await repository.saveRegionalPreferences({
+      regionalPreferences: body as never,
+    });
+
+    if (!saved.ok) {
+      if (saved.error.type === "InvalidNewsSourceConfiguration") {
+        sendJson(response, 400, {
+          error: {
+            code: "InvalidNewsSourceConfiguration",
+            message: saved.error.message,
+            details: configurationValidationDetails(saved.error),
+          },
+        });
+        return true;
+      }
+
+      sendRepositoryError(response);
+      return true;
+    }
+
+    sendJson(response, 200, toConfigurationResponse(saved.value));
     return true;
   }
 

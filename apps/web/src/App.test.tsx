@@ -12,4 +12,12 @@ describe("App", () => {
     expect(markup).not.toMatch(/Clean Architecture\s+Template/);
     expect(markup).not.toMatch(/Vite\s+\+\s+React/);
   });
+
+  it("renders an automatic regional preferences action", () => {
+    const markup = renderToStaticMarkup(<App />);
+
+    expect(markup).toContain("Preferencias regionales");
+    expect(markup).toContain("Zona automatica");
+    expect(markup).toContain("Guardar preferencias");
+  });
 });

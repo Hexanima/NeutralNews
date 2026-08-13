@@ -2,6 +2,7 @@ import {
   createDefaultNewsSourceConfigurationSnapshot,
   createEffectiveNewsSourceConfiguration,
   createNewsSourceConfigurationSnapshot,
+  createRegionalPreferencesSnapshot,
   err,
   initialNewsSourceCatalogSnapshot,
   isOk,
@@ -14,6 +15,7 @@ import {
   type NewsSourceCatalogSnapshot,
   type NewsSourceConfigurationOverrideSnapshot,
   type NewsSourceConfigurationSnapshot,
+  type RegionalPreferencesInput,
   type Result,
 } from "app-domain";
 
@@ -50,6 +52,14 @@ export interface JsonNewsSourceConfigurationRepository {
   >;
   saveEntry: (input: {
     entry: NewsSourceCatalogEntrySnapshot;
+  }) => Promise<
+    Result<
+      EffectiveNewsSourceConfiguration,
+      JsonNewsSourceConfigurationRepositoryError
+    >
+  >;
+  saveRegionalPreferences: (input: {
+    regionalPreferences: RegionalPreferencesInput;
   }) => Promise<
     Result<
       EffectiveNewsSourceConfiguration,
@@ -103,6 +113,20 @@ const incrementVersion = (
 
 const toStorageError = (error: LocalJsonFileRepositoryError) =>
   new NewsSourceConfigurationStorageError(error);
+
+const createSnapshotFromCurrent = (
+  current: NewsSourceConfigurationSnapshot,
+  input: {
+    sourceOverrides?: readonly NewsSourceConfigurationOverrideSnapshot[] | undefined;
+    regionalPreferences?: RegionalPreferencesInput | undefined;
+  },
+) =>
+  createNewsSourceConfigurationSnapshot({
+    schemaVersion: 3,
+    configurationVersion: incrementVersion(current),
+    sourceOverrides: input.sourceOverrides ?? current.sourceOverrides,
+    regionalPreferences: input.regionalPreferences ?? current.regionalPreferences,
+  });
 
 export const createJsonNewsSourceConfigurationRepository = (
   dataDirectory: string,
@@ -235,10 +259,34 @@ export const createJsonNewsSourceConfigurationRepository = (
         shouldPersistOverride
           ? [...nextOverrides, { id: entry.source.id, entry }]
           : nextOverrides;
-      const nextSnapshot = createNewsSourceConfigurationSnapshot({
-        schemaVersion: 2,
-        configurationVersion: incrementVersion(current.value),
+      const nextSnapshot = createSnapshotFromCurrent(current.value, {
         sourceOverrides,
+      });
+
+      if (!nextSnapshot.ok) {
+        return nextSnapshot;
+      }
+
+      return saveMutatedSnapshot(nextSnapshot.value);
+    },
+
+    saveRegionalPreferences: async ({ regionalPreferences }) => {
+      const current = await readSnapshot();
+
+      if (!current.ok) {
+        return current;
+      }
+
+      const normalizedPreferences = createRegionalPreferencesSnapshot(
+        regionalPreferences,
+      );
+
+      if (!normalizedPreferences.ok) {
+        return normalizedPreferences;
+      }
+
+      const nextSnapshot = createSnapshotFromCurrent(current.value, {
+        regionalPreferences: normalizedPreferences.value,
       });
 
       if (!nextSnapshot.ok) {
@@ -263,9 +311,7 @@ export const createJsonNewsSourceConfigurationRepository = (
       );
       const sourceOverrides: NewsSourceConfigurationOverrideSnapshot[] =
         defaultExists ? [...nextOverrides, { id, deleted: true }] : nextOverrides;
-      const nextSnapshot = createNewsSourceConfigurationSnapshot({
-        schemaVersion: 2,
-        configurationVersion: incrementVersion(current.value),
+      const nextSnapshot = createSnapshotFromCurrent(current.value, {
         sourceOverrides,
       });
 
@@ -283,13 +329,15 @@ export const createJsonNewsSourceConfigurationRepository = (
         return current;
       }
 
-      const nextSnapshot: NewsSourceConfigurationSnapshot = {
-        schemaVersion: 2,
-        configurationVersion: incrementVersion(current.value),
+      const nextSnapshot = createSnapshotFromCurrent(current.value, {
         sourceOverrides: [],
-      };
+      });
 
-      return saveMutatedSnapshot(nextSnapshot);
+      if (!nextSnapshot.ok) {
+        return nextSnapshot;
+      }
+
+      return saveMutatedSnapshot(nextSnapshot.value);
     },
   };
 };
