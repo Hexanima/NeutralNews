@@ -30,4 +30,26 @@ describe("regional preferences API", () => {
       feedDistribution: { argentina: 3, latin_america: 2, international: 1 },
     });
   });
+
+  it("rejects when the API does not persist regional preferences", async () => {
+    await expect(
+      saveRegionalPreferences(
+        {
+          timeZone: { mode: "automatic" },
+          feedDistribution: { argentina: 3, latin_america: 2, international: 1 },
+        },
+        {
+          detectTimeZone: () => "America/Santiago",
+          fetch: async () =>
+            new Response(
+              JSON.stringify({ error: { code: "InvalidNewsSourceConfiguration" } }),
+              {
+                status: 400,
+                headers: { "content-type": "application/json" },
+              },
+            ),
+        },
+      ),
+    ).rejects.toMatchObject({ status: 400 });
+  });
 });

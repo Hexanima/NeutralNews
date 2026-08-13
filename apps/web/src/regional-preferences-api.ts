@@ -2,6 +2,18 @@ import type { RegionalPreferencesInput } from "app-domain";
 
 export type RegionalPreferencesFetch = Pick<typeof globalThis, "fetch">["fetch"];
 
+export class RegionalPreferencesRequestError extends Error {
+  public readonly status: number;
+  public readonly body: unknown;
+
+  constructor(status: number, body: unknown) {
+    super("Regional preferences request failed");
+    this.name = "RegionalPreferencesRequestError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
 export interface SaveRegionalPreferencesDependencies {
   readonly detectTimeZone?: (() => string | undefined) | undefined;
   readonly fetch?: RegionalPreferencesFetch | undefined;
@@ -34,6 +46,14 @@ const withDetectedTimeZone = (
       };
 };
 
+const readJsonResponse = async (response: Response): Promise<unknown> => {
+  try {
+    return (await response.json()) as unknown;
+  } catch {
+    return null;
+  }
+};
+
 export const saveRegionalPreferences = async (
   preferences: RegionalPreferencesInput,
   dependencies: SaveRegionalPreferencesDependencies = {},
@@ -48,6 +68,11 @@ export const saveRegionalPreferences = async (
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
+  const responseBody = await readJsonResponse(response);
 
-  return response.json() as Promise<unknown>;
+  if (!response.ok) {
+    throw new RegionalPreferencesRequestError(response.status, responseBody);
+  }
+
+  return responseBody;
 };
