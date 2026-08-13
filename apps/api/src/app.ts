@@ -21,7 +21,10 @@ import {
   loadRuntimeEnvironment,
   type ApiConfig,
 } from "./config.js";
-import { handleConfigurationRequest } from "./configuration-endpoints.js";
+import {
+  handleConfigurationRequest,
+  type ConfigurationRequestOptions,
+} from "./configuration-endpoints.js";
 import {
   executeExternalOperation,
   type ExecuteExternalOperationOptions,
@@ -58,6 +61,7 @@ export interface AppOptions {
   staticRoot?: string;
   config?: ApiConfig;
   healthResponseFactory?: HealthResponseFactory;
+  configurationRequestOptions?: ConfigurationRequestOptions | undefined;
 }
 
 type RequestEventSource =
@@ -276,7 +280,12 @@ export const requestHandler = async (
   }
 
   if (
-    await handleConfigurationRequest(request, response, options.config)
+    await handleConfigurationRequest(
+      request,
+      response,
+      options.config,
+      options.configurationRequestOptions,
+    )
   ) {
     return;
   }
