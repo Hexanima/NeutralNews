@@ -144,6 +144,7 @@ const blockedIpv4Ranges: readonly [string, number][] = [
   ["172.16.0.0", 12],
   ["192.0.0.0", 24],
   ["192.0.2.0", 24],
+  ["192.88.99.0", 24],
   ["192.168.0.0", 16],
   ["198.18.0.0", 15],
   ["198.51.100.0", 24],
@@ -226,6 +227,15 @@ const isBlockedIpv6 = (address: string): boolean => {
   const isUnspecified = groups.every((group) => group === 0);
   const isLoopback = groups.slice(0, 7).every((group) => group === 0) && groups[7] === 1;
 
+  const isIpv4Ipv6Translation =
+    first === 0x0064 &&
+    groups[1] === 0xff9b &&
+    groups[2] === 0 &&
+    groups[3] === 0 &&
+    groups[4] === 0 &&
+    groups[5] === 0;
+  const isLocalIpv4Ipv6Translation =
+    first === 0x0064 && groups[1] === 0xff9b && groups[2] === 0x0001;
   const isDiscardOnly =
     first === 0x0100 && groups[1] === 0 && groups[2] === 0 && groups[3] === 0;
   const isProtocolAssignment = first === 0x2001 && (second & 0xfe00) === 0;
@@ -235,6 +245,8 @@ const isBlockedIpv6 = (address: string): boolean => {
   return (
     isUnspecified ||
     isLoopback ||
+    isIpv4Ipv6Translation ||
+    isLocalIpv4Ipv6Translation ||
     isDiscardOnly ||
     isProtocolAssignment ||
     isSixToFour ||
@@ -427,6 +439,10 @@ export const requestExternalResource = async (
       return err(new ExternalUrlPolicyError("TooManyRedirects", nextUrl));
     }
 
-    nextUrl = new URL(location, validated.value.url).href;
+    try {
+      nextUrl = new URL(location, validated.value.url).href;
+    } catch {
+      return err(new ExternalUrlPolicyError("InvalidUrl", location));
+    }
   }
 };

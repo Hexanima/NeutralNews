@@ -53,6 +53,7 @@ describe("external URL policy", () => {
     "http://169.254.1.1/feed.xml",
     "http://100.64.0.1/feed.xml",
     "http://192.0.2.1/feed.xml",
+    "http://192.88.99.1/feed.xml",
     "http://198.18.0.1/feed.xml",
     "http://203.0.113.1/feed.xml",
     "http://224.0.0.1/feed.xml",
@@ -62,6 +63,8 @@ describe("external URL policy", () => {
     "http://[2001:db8::1]/feed.xml",
     "http://[ff00::1]/feed.xml",
     "http://[100::1]/feed.xml",
+    "http://[64:ff9b::c000:201]/feed.xml",
+    "http://[64:ff9b:1::1]/feed.xml",
     "http://[2001:1::1]/feed.xml",
     "http://[2002:c000:201::]/feed.xml",
     "http://[fec0::1]/feed.xml",
@@ -119,6 +122,23 @@ describe("external URL policy", () => {
     expect(requestedUrls).toEqual(["https://example.com/feed.xml"]);
   });
 
+  it("rejects invalid redirect locations without throwing", async () => {
+    const result = await requestExternalResource("https://example.com/feed.xml", {
+      maxBytes: 1024,
+      maxRedirects: 2,
+      resolveHostname: resolveTo("93.184.216.34"),
+      requestUrl: async () => ({
+        statusCode: 302,
+        headers: { location: "http://[invalid" },
+        body: new Uint8Array(),
+      }),
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { reason: "InvalidUrl" },
+    });
+  });
   it("stops after the configured redirect limit", async () => {
     const result = await requestExternalResource("https://example.com/feed.xml", {
       maxBytes: 1024,
