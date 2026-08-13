@@ -64,6 +64,11 @@ const fetchFromApp = async (
   const server = createApp({
     staticRoot: await createStaticRoot(),
     config: loadApiConfig(environment),
+    configurationRequestOptions: {
+      externalUrlValidation: {
+        resolveHostname: async () => ["93.184.216.34"],
+      },
+    },
   });
 
   await new Promise<void>((resolve) => {
@@ -243,6 +248,38 @@ describe("news source configuration HTTP endpoints", () => {
     ).toMatchObject({ configurationVersion: 2 });
   });
 
+  it("rejects RSS news sources whose feed URL targets a blocked address", async () => {
+    const environment = await createValidEnvironment();
+    const rssSource = {
+      ...manualSource,
+      discovery: { mode: "rss", feedUrl: "http://127.0.0.1/feed.xml" },
+    } satisfies NewsSourceCatalogEntrySnapshot;
+
+    const response = await fetchFromApp(
+      "/api/configuration/news-sources",
+      environment,
+      { method: "POST", json: rssSource },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: {
+        code: "BlockedExternalUrl",
+        message: expect.any(String),
+        details: [{ field: "feedUrl", reason: "BlockedAddress" }],
+      },
+    });
+    const configuration = await fetchFromApp(
+      "/api/configuration/news-sources",
+      environment,
+    );
+
+    expect(configuration.status).toBe(200);
+    expect(await configuration.json()).toMatchObject({
+      configurationVersion: 1,
+      sources: initialNewsSourceCatalogSnapshot.sources,
+    });
+  });
   it("returns a structured error for an invalid manual news source", async () => {
     const environment = await createValidEnvironment();
     const response = await fetchFromApp(

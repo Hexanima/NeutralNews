@@ -13,6 +13,10 @@ import {
 } from "app-domain";
 
 import type { ApiConfig } from "./config.js";
+import {
+  validateExternalUrl,
+  type ValidateExternalUrlOptions,
+} from "./external-url-policy.js";
 import { createJsonNewsSourceConfigurationRepository } from "./news-source-configuration-repository.js";
 
 const newsSourcesPath = "/api/configuration/news-sources";
@@ -27,6 +31,10 @@ interface ErrorResponseBody {
     id?: string;
     details?: unknown;
   };
+}
+
+export interface ConfigurationRequestOptions {
+  externalUrlValidation?: ValidateExternalUrlOptions | undefined;
 }
 
 interface ConfigurationResponseBody {
@@ -139,9 +147,10 @@ const configurationValidationDetails = (
     };
   });
 
-const validateEntry = (
+const validateEntry = async (
   value: unknown,
-): NewsSourceCatalogEntrySnapshot | ErrorResponseBody => {
+  options: ConfigurationRequestOptions = {},
+): Promise<NewsSourceCatalogEntrySnapshot | ErrorResponseBody> => {
   const catalog = createNewsSourceCatalog({ schemaVersion: 1, sources: [value] });
 
   if (!catalog.ok) {
@@ -156,12 +165,30 @@ const validateEntry = (
 
   const [entry] = catalog.value.sources;
 
+  if (entry!.discovery.mode === "rss") {
+    const externalUrl = await validateExternalUrl(
+      entry!.discovery.feedUrl,
+      options.externalUrlValidation,
+    );
+
+    if (!externalUrl.ok) {
+      return {
+        error: {
+          code: "BlockedExternalUrl",
+          message: externalUrl.error.message,
+          details: [
+            { field: "feedUrl", reason: externalUrl.error.reason },
+          ],
+        },
+      };
+    }
+  }
+
   return {
     source: toNewsSourceSnapshot(entry!.source),
     discovery: entry!.discovery,
   };
 };
-
 const findEntry = (
   configuration: EffectiveNewsSourceConfiguration,
   id: string,
@@ -226,6 +253,7 @@ export const handleConfigurationRequest = async (
   request: IncomingMessage,
   response: ServerResponse,
   config?: ApiConfig,
+  options: ConfigurationRequestOptions = {},
 ): Promise<boolean> => {
   const rawUrl = request.url ?? "/";
   const requestUrl = new URL(rawUrl, "http://127.0.0.1");
@@ -304,7 +332,7 @@ export const handleConfigurationRequest = async (
       return true;
     }
 
-    const entry = validateEntry(body);
+    const entry = await validateEntry(body, options);
 
     if ("error" in entry) {
       sendJson(response, 400, entry);
@@ -364,7 +392,7 @@ export const handleConfigurationRequest = async (
       return true;
     }
 
-    const entry = validateEntry(body);
+    const entry = await validateEntry(body, options);
 
     if ("error" in entry) {
       sendJson(response, 400, entry);

@@ -226,9 +226,19 @@ const isBlockedIpv6 = (address: string): boolean => {
   const isUnspecified = groups.every((group) => group === 0);
   const isLoopback = groups.slice(0, 7).every((group) => group === 0) && groups[7] === 1;
 
+  const isDiscardOnly =
+    first === 0x0100 && groups[1] === 0 && groups[2] === 0 && groups[3] === 0;
+  const isProtocolAssignment = first === 0x2001 && (second & 0xfe00) === 0;
+  const isSixToFour = first === 0x2002;
+  const isSiteLocal = (first & 0xffc0) === 0xfec0;
+
   return (
     isUnspecified ||
     isLoopback ||
+    isDiscardOnly ||
+    isProtocolAssignment ||
+    isSixToFour ||
+    isSiteLocal ||
     (first & 0xffc0) === 0xfe80 ||
     (first & 0xfe00) === 0xfc00 ||
     (first & 0xff00) === 0xff00 ||
