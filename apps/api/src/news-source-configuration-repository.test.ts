@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  defaultRegionalPreferences,
   initialNewsSourceCatalogSnapshot,
   isOk,
   type NewsSourceCatalogEntrySnapshot,
@@ -51,6 +52,7 @@ const readStoredConfiguration = async (directory: string) =>
     schemaVersion: number;
     configurationVersion: number;
     sourceOverrides: unknown[];
+    regionalPreferences: unknown;
   };
 
 afterEach(async () => {
@@ -74,13 +76,48 @@ describe("JSON news source configuration repository", () => {
     }
 
     expect(result.value.configurationVersion).toBe(1);
+    expect(result.value.regionalPreferences).toEqual(defaultRegionalPreferences);
     expect(result.value.sources.map((entry) => entry.source.id)).toEqual(
       initialNewsSourceCatalogSnapshot.sources.map((entry) => entry.source.id),
     );
     expect(await readStoredConfiguration(directory)).toEqual({
-      schemaVersion: 2,
+      schemaVersion: 3,
       configurationVersion: 1,
       sourceOverrides: [],
+      regionalPreferences: defaultRegionalPreferences,
+    });
+  });
+
+  it("persists regional preferences and increments the configuration version", async () => {
+    const directory = await createTemporaryDirectory();
+    const repository = createJsonNewsSourceConfigurationRepository(directory);
+
+    const saved = await repository.saveRegionalPreferences({
+      regionalPreferences: {
+        timeZone: { mode: "manual", manualTimeZone: "Europe/Madrid" },
+        feedDistribution: { argentina: 2, latin_america: 2, international: 2 },
+      },
+    });
+
+    expect(saved.ok).toBe(true);
+    if (!isOk(saved)) {
+      throw saved.error;
+    }
+
+    expect(saved.value.configurationVersion).toBe(2);
+    expect(saved.value.regionalPreferences).toEqual({
+      timeZone: { mode: "manual", manualTimeZone: "Europe/Madrid" },
+      effectiveTimeZone: "Europe/Madrid",
+      feedDistribution: { argentina: 2, latin_america: 2, international: 2 },
+    });
+    expect(await readStoredConfiguration(directory)).toMatchObject({
+      schemaVersion: 3,
+      configurationVersion: 2,
+      regionalPreferences: {
+        timeZone: { mode: "manual", manualTimeZone: "Europe/Madrid" },
+        effectiveTimeZone: "Europe/Madrid",
+        feedDistribution: { argentina: 2, latin_america: 2, international: 2 },
+      },
     });
   });
 
@@ -142,13 +179,15 @@ describe("JSON news source configuration repository", () => {
     }
 
     expect(restored.value.configurationVersion).toBe(3);
+    expect(restored.value.regionalPreferences).toEqual(defaultRegionalPreferences);
     expect(restored.value.sources.map((entry) => entry.source.id)).toEqual(
       initialNewsSourceCatalogSnapshot.sources.map((entry) => entry.source.id),
     );
     expect(await readStoredConfiguration(directory)).toEqual({
-      schemaVersion: 2,
+      schemaVersion: 3,
       configurationVersion: 3,
       sourceOverrides: [],
+      regionalPreferences: defaultRegionalPreferences,
     });
   });
 
@@ -182,11 +221,11 @@ describe("JSON news source configuration repository", () => {
 
     expect(result.value.configurationVersion).toBe(5);
     expect(await readStoredConfiguration(directory)).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       configurationVersion: 5,
+      regionalPreferences: defaultRegionalPreferences,
     });
   });
-
 
   it("recovers defaults when the local JSON violates the configuration schema", async () => {
     const directory = await createTemporaryDirectory();
@@ -194,7 +233,7 @@ describe("JSON news source configuration repository", () => {
     await writeFile(
       join(directory, configPath),
       `${JSON.stringify({
-        schemaVersion: 2,
+        schemaVersion: 3,
         configurationVersion: 9,
         sourceOverrides: [
           {
@@ -202,6 +241,7 @@ describe("JSON news source configuration repository", () => {
             entry: manualSource,
           },
         ],
+        regionalPreferences: defaultRegionalPreferences,
       })}\n`,
     );
     const repository = createJsonNewsSourceConfigurationRepository(directory);
@@ -214,15 +254,18 @@ describe("JSON news source configuration repository", () => {
     }
 
     expect(result.value.configurationVersion).toBe(1);
+    expect(result.value.regionalPreferences).toEqual(defaultRegionalPreferences);
     expect(result.value.sources.map((entry) => entry.source.id)).toEqual(
       initialNewsSourceCatalogSnapshot.sources.map((entry) => entry.source.id),
     );
     expect(await readStoredConfiguration(directory)).toEqual({
-      schemaVersion: 2,
+      schemaVersion: 3,
       configurationVersion: 1,
       sourceOverrides: [],
+      regionalPreferences: defaultRegionalPreferences,
     });
   });
+
   it("recovers defaults when the local JSON is corrupt and keeps a recoverable copy", async () => {
     const directory = await createTemporaryDirectory();
     await mkdir(join(directory, "configuration"));
@@ -238,9 +281,10 @@ describe("JSON news source configuration repository", () => {
 
     expect(result.value.configurationVersion).toBe(1);
     expect(await readStoredConfiguration(directory)).toEqual({
-      schemaVersion: 2,
+      schemaVersion: 3,
       configurationVersion: 1,
       sourceOverrides: [],
+      regionalPreferences: defaultRegionalPreferences,
     });
     expect(
       (await readdir(join(directory, "configuration"))).some((fileName) =>

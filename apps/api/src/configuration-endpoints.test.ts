@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { AddressInfo } from "node:net";
 
 import {
+  defaultRegionalPreferences,
   initialNewsSourceCatalogSnapshot,
   type NewsSourceCatalogEntrySnapshot,
 } from "app-domain";
@@ -98,6 +99,7 @@ const readStoredConfiguration = async (directory: string) =>
   JSON.parse(await readFile(join(directory, configPath), "utf8")) as {
     configurationVersion: number;
     sourceOverrides: unknown[];
+    regionalPreferences: unknown;
   };
 
 afterEach(async () => {
@@ -122,7 +124,106 @@ describe("news source configuration HTTP endpoints", () => {
       configurationVersion: 1,
       cacheVersion: expect.any(String),
       sources: initialNewsSourceCatalogSnapshot.sources,
+      regionalPreferences: defaultRegionalPreferences,
     });
+  });
+
+  it("stores automatic regional preferences with the browser time zone", async () => {
+    const environment = await createValidEnvironment();
+    const response = await fetchFromApp(
+      "/api/configuration/regional-preferences",
+      environment,
+      {
+        method: "PUT",
+        json: {
+          timeZone: {
+            mode: "automatic",
+            detectedTimeZone: "America/Santiago",
+          },
+          feedDistribution: { argentina: 2, latin_america: 3, international: 1 },
+        },
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      configurationVersion: 2,
+      regionalPreferences: {
+        timeZone: {
+          mode: "automatic",
+          detectedTimeZone: "America/Santiago",
+        },
+        effectiveTimeZone: "America/Santiago",
+        feedDistribution: { argentina: 2, latin_america: 3, international: 1 },
+      },
+    });
+    expect(await readStoredConfiguration(environment.NEUTRALNEWS_DATA_DIR!)).toMatchObject({
+      configurationVersion: 2,
+      regionalPreferences: {
+        effectiveTimeZone: "America/Santiago",
+      },
+    });
+  });
+
+  it("stores manual regional preferences", async () => {
+    const environment = await createValidEnvironment();
+    const response = await fetchFromApp(
+      "/api/configuration/regional-preferences",
+      environment,
+      {
+        method: "PUT",
+        json: {
+          timeZone: {
+            mode: "manual",
+            manualTimeZone: "Europe/Madrid",
+          },
+          feedDistribution: { argentina: 2, latin_america: 2, international: 2 },
+        },
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      configurationVersion: 2,
+      regionalPreferences: {
+        timeZone: {
+          mode: "manual",
+          manualTimeZone: "Europe/Madrid",
+        },
+        effectiveTimeZone: "Europe/Madrid",
+        feedDistribution: { argentina: 2, latin_america: 2, international: 2 },
+      },
+    });
+  });
+
+  it("rejects invalid regional preferences without incrementing the version", async () => {
+    const environment = await createValidEnvironment();
+    const response = await fetchFromApp(
+      "/api/configuration/regional-preferences",
+      environment,
+      {
+        method: "PUT",
+        json: {
+          timeZone: { mode: "manual", manualTimeZone: "Buenos Aires" },
+          feedDistribution: { argentina: 3, latin_america: 2, international: 1 },
+        },
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: {
+        code: "InvalidNewsSourceConfiguration",
+        message: expect.any(String),
+        details: expect.arrayContaining([
+          expect.objectContaining({ field: "timeZone" }),
+        ]),
+      },
+    });
+    expect(
+      (await readStoredConfiguration(environment.NEUTRALNEWS_DATA_DIR!))
+        .configurationVersion,
+    ).toBe(1);
   });
 
   it("creates a manual news source and persists the incremented configuration version", async () => {
@@ -219,6 +320,7 @@ describe("news source configuration HTTP endpoints", () => {
         .configurationVersion,
     ).toBe(1);
   });
+
   it("edits an existing news source and rejects path and body id mismatches", async () => {
     const environment = await createValidEnvironment();
     const editedSource = {
