@@ -61,6 +61,9 @@ describe("external URL policy", () => {
     "http://[fc00::1]/feed.xml",
     "http://[2001:db8::1]/feed.xml",
     "http://[ff00::1]/feed.xml",
+    "http://[::ffff:7f00:1]/feed.xml",
+    "http://[::ffff:0a00:1]/feed.xml",
+    "http://[::ffff:c0a8:10a]/feed.xml",
   ])("rejects local, private, link-local, and reserved hosts: %s", async (url) => {
     await expect(validateExternalUrl(url)).resolves.toMatchObject({
       ok: false,

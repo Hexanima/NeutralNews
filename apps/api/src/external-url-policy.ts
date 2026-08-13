@@ -190,6 +190,22 @@ const expandIpv6 = (address: string): number[] | null => {
   return groups.some((group) => group === null) ? null : (groups as number[]);
 };
 
+const ipv4FromMappedIpv6 = (groups: readonly number[]): number | null => {
+  const hasMappedPrefix =
+    groups[0] === 0 &&
+    groups[1] === 0 &&
+    groups[2] === 0 &&
+    groups[3] === 0 &&
+    groups[4] === 0 &&
+    groups[5] === 0xffff;
+
+  if (!hasMappedPrefix) {
+    return null;
+  }
+
+  return (((groups[6]! << 16) >>> 0) + groups[7]!) >>> 0;
+};
+
 const isBlockedIpv6 = (address: string): boolean => {
   const groups = expandIpv6(address);
 
@@ -197,13 +213,22 @@ const isBlockedIpv6 = (address: string): boolean => {
     return true;
   }
 
+  const mappedIpv4 = ipv4FromMappedIpv6(groups);
+
+  if (mappedIpv4 !== null) {
+    return blockedIpv4Ranges.some(([base, prefix]) =>
+      ipv4InRange(mappedIpv4, base, prefix),
+    );
+  }
+
   const first = groups[0]!;
   const second = groups[1]!;
   const isUnspecified = groups.every((group) => group === 0);
+  const isLoopback = groups.slice(0, 7).every((group) => group === 0) && groups[7] === 1;
 
   return (
     isUnspecified ||
-    address === "::1" ||
+    isLoopback ||
     (first & 0xffc0) === 0xfe80 ||
     (first & 0xfe00) === 0xfc00 ||
     (first & 0xff00) === 0xff00 ||
