@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
+import { isIP } from "node:net";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -19,6 +20,7 @@ export interface ApiConfig {
   credentialVaultKey?: string;
   aiProviderStatus: AiProviderStatus;
   externalServices: ExternalServiceConfig;
+  trustedProxyAddresses: string[];
 }
 
 export interface ExternalServiceConfig {
@@ -348,6 +350,31 @@ const resolveExternalServiceConfig = (
   ),
 });
 
+const resolveTrustedProxyAddresses = (
+  environment: NodeJS.ProcessEnv,
+  issues: ConfigurationIssue[],
+): string[] => {
+  const rawAddresses = environment.NEUTRALNEWS_TRUSTED_PROXY_ADDRESSES?.trim();
+
+  if (rawAddresses === undefined || rawAddresses === "") {
+    return [];
+  }
+
+  const addresses = rawAddresses
+    .split(",")
+    .map((address) => address.trim())
+    .filter((address) => address !== "");
+
+  if (addresses.some((address) => isIP(address) === 0)) {
+    issues.push({
+      variable: "NEUTRALNEWS_TRUSTED_PROXY_ADDRESSES",
+      message: "must contain only IP addresses",
+    });
+  }
+
+  return addresses;
+};
+
 export const loadApiConfig = (
   environment: NodeJS.ProcessEnv = process.env,
 ): ApiConfig => {
@@ -361,6 +388,10 @@ export const loadApiConfig = (
   const credentialVaultKey =
     environment.NEUTRALNEWS_CREDENTIAL_VAULT_KEY?.trim() || undefined;
   const externalServices = resolveExternalServiceConfig(environment, issues);
+  const trustedProxyAddresses = resolveTrustedProxyAddresses(
+    environment,
+    issues,
+  );
 
   if (issues.length > 0) {
     throw new ConfigurationError(issues);
@@ -376,5 +407,6 @@ export const loadApiConfig = (
     credentialVaultKey,
     aiProviderStatus: "not_configured",
     externalServices,
+    trustedProxyAddresses,
   };
 };

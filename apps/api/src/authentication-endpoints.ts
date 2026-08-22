@@ -58,9 +58,36 @@ const firstHeaderValue = (
 ): string | undefined =>
   Array.isArray(value) ? value[0] : value;
 
-const isSecureRequest = (request: IncomingMessage): boolean => {
+const normalizeIpAddress = (address: string): string =>
+  address.startsWith("::ffff:") ? address.slice("::ffff:".length) : address;
+
+const isTrustedProxyRequest = (
+  request: IncomingMessage,
+  config: ApiConfig | undefined,
+): boolean => {
+  const remoteAddress = request.socket.remoteAddress;
+
+  if (remoteAddress === undefined || config === undefined) {
+    return false;
+  }
+
+  const normalizedRemoteAddress = normalizeIpAddress(remoteAddress);
+
+  return config.trustedProxyAddresses
+    .map(normalizeIpAddress)
+    .includes(normalizedRemoteAddress);
+};
+
+const isSecureRequest = (
+  request: IncomingMessage,
+  config: ApiConfig | undefined,
+): boolean => {
   if ("encrypted" in request.socket && request.socket.encrypted === true) {
     return true;
+  }
+
+  if (!isTrustedProxyRequest(request, config)) {
+    return false;
   }
 
   const forwardedProtocol = firstHeaderValue(
@@ -79,7 +106,7 @@ export const handleAuthenticationRequest = async (
   config?: ApiConfig,
 ): Promise<boolean> => {
   const pathname = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
-  const secure = isSecureRequest(request);
+  const secure = isSecureRequest(request, config);
 
   if (pathname === logoutPath && request.method === "POST") {
     response.writeHead(204, {

@@ -63,6 +63,7 @@ describe("api configuration", () => {
         maxAttempts: 3,
         retryDelayMs: 250,
       },
+      trustedProxyAddresses: [],
     });
   });
 
@@ -79,6 +80,7 @@ describe("api configuration", () => {
         `NEUTRALNEWS_SESSION_SECRET=${validSessionSecret}`,
         "API_PORT=4100",
         "export NEUTRALNEWS_EXTERNAL_MAX_ATTEMPTS=2",
+        "NEUTRALNEWS_TRUSTED_PROXY_ADDRESSES=127.0.0.1, ::1",
         "NEUTRALNEWS_CREDENTIAL_VAULT_KEY='quoted # vault key' # local note",
       ].join("\n"),
     );
@@ -91,7 +93,30 @@ describe("api configuration", () => {
     expect(config.accessPasswordHash).toBe(validPasswordHash);
     expect(config.sessionSecret).toBe(validSessionSecret);
     expect(config.externalServices.maxAttempts).toBe(2);
+    expect(config.trustedProxyAddresses).toEqual(["127.0.0.1", "::1"]);
     expect(config.credentialVaultKey).toBe("quoted # vault key");
+  });
+
+  it("loads trusted proxy addresses when explicitly configured", async () => {
+    const environment = await createValidEnvironment({
+      NEUTRALNEWS_TRUSTED_PROXY_ADDRESSES: "127.0.0.1,::1,::ffff:127.0.0.1",
+    });
+
+    expect(loadApiConfig(environment).trustedProxyAddresses).toEqual([
+      "127.0.0.1",
+      "::1",
+      "::ffff:127.0.0.1",
+    ]);
+  });
+
+  it("rejects invalid trusted proxy addresses", async () => {
+    const environment = await createValidEnvironment({
+      NEUTRALNEWS_TRUSTED_PROXY_ADDRESSES: "127.0.0.1,example.test",
+    });
+
+    expect(() => loadApiConfig(environment)).toThrow(
+      /NEUTRALNEWS_TRUSTED_PROXY_ADDRESSES/,
+    );
   });
 
   it("loads configurable external service policy values", async () => {
@@ -318,6 +343,7 @@ describe("api configuration", () => {
     expect(envExample).toContain("NEUTRALNEWS_EXTERNAL_TIMEOUT_MS=");
     expect(envExample).toContain("NEUTRALNEWS_EXTERNAL_MAX_ATTEMPTS=");
     expect(envExample).toContain("NEUTRALNEWS_EXTERNAL_RETRY_DELAY_MS=");
+    expect(envExample).toContain("NEUTRALNEWS_TRUSTED_PROXY_ADDRESSES=");
     expect(envExample).toContain("NEUTRALNEWS_ACCESS_PASSWORD_HASH=");
     expect(envExample).toContain("NEUTRALNEWS_SESSION_SECRET=");
     expect(envExample).toContain("NEUTRALNEWS_CREDENTIAL_VAULT_KEY=");

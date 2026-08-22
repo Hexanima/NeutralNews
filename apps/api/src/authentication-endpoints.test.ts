@@ -14,7 +14,9 @@ const passwordHash =
 const sessionSecret = "0123456789abcdef0123456789abcdef";
 const temporaryDirectories: string[] = [];
 
-const createEnvironment = async (): Promise<NodeJS.ProcessEnv> => {
+const createEnvironment = async (
+  overrides: NodeJS.ProcessEnv = {},
+): Promise<NodeJS.ProcessEnv> => {
   const dataDirectory = await mkdtemp(join(tmpdir(), "neutralnews-auth-"));
   temporaryDirectories.push(dataDirectory);
 
@@ -22,14 +24,18 @@ const createEnvironment = async (): Promise<NodeJS.ProcessEnv> => {
     NEUTRALNEWS_ACCESS_PASSWORD_HASH: passwordHash,
     NEUTRALNEWS_SESSION_SECRET: sessionSecret,
     NEUTRALNEWS_DATA_DIR: dataDirectory,
+    ...overrides,
   };
 };
 
 const fetchFromApp = async (
   path: string,
   init?: RequestInit,
+  environmentOverrides?: NodeJS.ProcessEnv,
 ): Promise<Response> => {
-  const server = createApp({ config: loadApiConfig(await createEnvironment()) });
+  const server = createApp({
+    config: loadApiConfig(await createEnvironment(environmentOverrides)),
+  });
 
   await new Promise<void>((resolve) => {
     server.listen(0, "127.0.0.1", resolve);
@@ -68,7 +74,7 @@ describe("authentication HTTP endpoints", () => {
     );
   });
 
-  it("sets Secure when the request was forwarded from HTTPS", async () => {
+  it("ignores forwarded HTTPS when the proxy is not trusted", async () => {
     const response = await fetchFromApp("/api/auth/login", {
       method: "POST",
       headers: {
@@ -80,33 +86,61 @@ describe("authentication HTTP endpoints", () => {
 
     expect(response.status).toBe(204);
     expect(response.headers.get("set-cookie")).toMatch(
+      /^neutralnews_session=[^;]+; Path=\/; HttpOnly; SameSite=Lax; Max-Age=604800$/,
+    );
+  });
+
+  it("sets Secure when forwarded HTTPS comes from a trusted proxy", async () => {
+    const response = await fetchFromApp(
+      "/api/auth/login",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-forwarded-proto": "https",
+        },
+        body: JSON.stringify({ password }),
+      },
+      { NEUTRALNEWS_TRUSTED_PROXY_ADDRESSES: "127.0.0.1" },
+    );
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("set-cookie")).toMatch(
       /^neutralnews_session=[^;]+; Path=\/; HttpOnly; SameSite=Lax; Secure; Max-Age=604800$/,
     );
   });
 
-  it("uses the first forwarded protocol value", async () => {
-    const response = await fetchFromApp("/api/auth/login", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-forwarded-proto": "https,http",
+  it("uses the first forwarded protocol value from a trusted proxy", async () => {
+    const response = await fetchFromApp(
+      "/api/auth/login",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-forwarded-proto": "https,http",
+        },
+        body: JSON.stringify({ password }),
       },
-      body: JSON.stringify({ password }),
-    });
+      { NEUTRALNEWS_TRUSTED_PROXY_ADDRESSES: "127.0.0.1" },
+    );
 
     expect(response.status).toBe(204);
     expect(response.headers.get("set-cookie")).toContain("; Secure;");
   });
 
-  it("does not set Secure when the request was forwarded from HTTP", async () => {
-    const response = await fetchFromApp("/api/auth/login", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-forwarded-proto": "http",
+  it("does not set Secure when trusted forwarded protocol is HTTP", async () => {
+    const response = await fetchFromApp(
+      "/api/auth/login",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-forwarded-proto": "http",
+        },
+        body: JSON.stringify({ password }),
       },
-      body: JSON.stringify({ password }),
-    });
+      { NEUTRALNEWS_TRUSTED_PROXY_ADDRESSES: "127.0.0.1" },
+    );
 
     expect(response.status).toBe(204);
     expect(response.headers.get("set-cookie")).toMatch(
@@ -114,11 +148,15 @@ describe("authentication HTTP endpoints", () => {
     );
   });
 
-  it("expires logout cookies as Secure when the request was forwarded from HTTPS", async () => {
-    const response = await fetchFromApp("/api/auth/logout", {
-      method: "POST",
-      headers: { "x-forwarded-proto": "https" },
-    });
+  it("expires logout cookies as Secure when forwarded HTTPS comes from a trusted proxy", async () => {
+    const response = await fetchFromApp(
+      "/api/auth/logout",
+      {
+        method: "POST",
+        headers: { "x-forwarded-proto": "https" },
+      },
+      { NEUTRALNEWS_TRUSTED_PROXY_ADDRESSES: "127.0.0.1" },
+    );
 
     expect(response.status).toBe(204);
     expect(response.headers.get("set-cookie")).toBe(
