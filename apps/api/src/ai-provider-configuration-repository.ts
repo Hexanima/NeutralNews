@@ -208,13 +208,19 @@ export const createJsonAiProviderConfigurationRepository = (
       JsonAiProviderConfigurationRepositoryError
     >
   > => {
+    const effective = effectiveFromSnapshot(snapshot);
+
+    if (!effective.ok) {
+      return effective;
+    }
+
     const writeResult = await writeSnapshot(snapshot);
 
     if (!writeResult.ok) {
       return writeResult;
     }
 
-    return effectiveFromSnapshot(snapshot);
+    return effective;
   };
 
   return {

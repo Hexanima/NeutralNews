@@ -100,6 +100,58 @@ describe("JSON AI provider configuration repository", () => {
     });
   });
 
+
+  it("does not persist an active selection that references an unknown model", async () => {
+    const directory = await createTemporaryDirectory();
+    const repository = createJsonAiProviderConfigurationRepository(directory);
+
+    const saved = await repository.saveActiveSelection({
+      selection: { providerId: "openai", modelId: "gpt-5.6-sol" },
+    });
+    expect(saved.ok).toBe(true);
+
+    const rejected = await repository.saveActiveSelection({
+      selection: { providerId: "openai", modelId: "missing" },
+    });
+
+    expect(rejected.ok).toBe(false);
+    expect(await readStoredConfiguration(directory)).toMatchObject({
+      schemaVersion: 1,
+      configurationVersion: 2,
+      activeSelection: { providerId: "openai", modelId: "gpt-5.6-sol" },
+    });
+  });
+
+  it("does not persist an active selection that references an incompatible model", async () => {
+    const directory = await createTemporaryDirectory();
+    const catalogSnapshot = {
+      ...initialAiProviderCatalogSnapshot,
+      models: initialAiProviderCatalogSnapshot.models.map((model) =>
+        model.modelId === "gpt-5.6-luna"
+          ? { ...model, compatibilityStatus: "incompatible" }
+          : model,
+      ),
+    };
+    const repository = createJsonAiProviderConfigurationRepository(directory, {
+      catalogSnapshot,
+    });
+
+    const saved = await repository.saveActiveSelection({
+      selection: { providerId: "openai", modelId: "gpt-5.6-sol" },
+    });
+    expect(saved.ok).toBe(true);
+
+    const rejected = await repository.saveActiveSelection({
+      selection: { providerId: "openai", modelId: "gpt-5.6-luna" },
+    });
+
+    expect(rejected.ok).toBe(false);
+    expect(await readStoredConfiguration(directory)).toMatchObject({
+      schemaVersion: 1,
+      configurationVersion: 2,
+      activeSelection: { providerId: "openai", modelId: "gpt-5.6-sol" },
+    });
+  });
   it("persists only opaque credential references and never secret values", async () => {
     const directory = await createTemporaryDirectory();
     const repository = createJsonAiProviderConfigurationRepository(directory);
