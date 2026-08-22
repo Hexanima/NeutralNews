@@ -5,6 +5,8 @@ import {
   AiProviderRejectedError,
   AiProviderUnsupportedError,
   ExternalPortError,
+  PortCancelledError,
+  PortLimitExceededError,
   err,
   ok,
   validateAiModelSelection,
@@ -39,7 +41,7 @@ export interface OpenAiClientLike {
     create: (body: Record<string, unknown>, options?: { signal?: AbortSignal }) => Promise<unknown>;
   };
   models: {
-    list: (options?: { signal?: AbortSignal }) => Promise<unknown>;
+    list: (options?: { signal?: AbortSignal }) => unknown;
   };
 }
 
@@ -137,6 +139,14 @@ const mapExternalError = (
   operationName: string,
   error: ExternalServiceError,
 ): PortError => {
+  if (error.category === "Timeout") {
+    return new PortLimitExceededError(operationName, "timeoutMs");
+  }
+
+  if (error.category === "Cancelled") {
+    return new PortCancelledError(operationName);
+  }
+
   if (
     error.statusCode !== undefined &&
     error.statusCode >= 400 &&
@@ -340,26 +350,63 @@ const usageFromResponse = (
   };
 };
 
+const remoteModelFromValue = (model: unknown): AiAccessibleModel | null => {
+  const id = getString(model, "id");
+
+  if (id === undefined) {
+    return null;
+  }
+
+  return {
+    id,
+    ...(toIsoDateTime(getNumber(model, "created")) === undefined
+      ? {}
+      : { createdAt: toIsoDateTime(getNumber(model, "created")) }),
+    ...(getString(model, "owned_by") === undefined
+      ? {}
+      : { ownedBy: getString(model, "owned_by") }),
+  };
+};
+
 const remoteModelsFromResponse = (response: unknown): readonly AiAccessibleModel[] =>
   asArray(isRecord(response) ? response.data : undefined).flatMap((model) => {
-    const id = getString(model, "id");
+    const parsed = remoteModelFromValue(model);
 
-    if (id === undefined) {
-      return [];
+    return parsed === null ? [] : [parsed];
+  });
+
+const isAsyncIterable = (
+  value: unknown,
+): value is AsyncIterable<unknown> =>
+  isRecord(value) && Symbol.asyncIterator in value;
+
+const collectRemoteModels = async (
+  listing: unknown,
+): Promise<readonly AiAccessibleModel[]> => {
+  const collectFromIterable = async (iterable: AsyncIterable<unknown>) => {
+    const models: AiAccessibleModel[] = [];
+
+    for await (const model of iterable) {
+      const parsed = remoteModelFromValue(model);
+
+      if (parsed !== null) {
+        models.push(parsed);
+      }
     }
 
-    return [
-      {
-        id,
-        ...(toIsoDateTime(getNumber(model, "created")) === undefined
-          ? {}
-          : { createdAt: toIsoDateTime(getNumber(model, "created")) }),
-        ...(getString(model, "owned_by") === undefined
-          ? {}
-          : { ownedBy: getString(model, "owned_by") }),
-      },
-    ];
-  });
+    return models;
+  };
+
+  if (isAsyncIterable(listing)) {
+    return collectFromIterable(listing);
+  }
+
+  const resolvedListing = await Promise.resolve(listing);
+
+  return isAsyncIterable(resolvedListing)
+    ? collectFromIterable(resolvedListing)
+    : remoteModelsFromResponse(resolvedListing);
+};
 
 export const createOpenAiAiProviderAdapter = ({
   configurationRepository,
@@ -421,6 +468,10 @@ export const createOpenAiAiProviderAdapter = ({
   return {
     generateStructuredResponse: async (input) => {
       const operationName = "openai.responses.create";
+
+      if (input.outputSchema === undefined) {
+        return err(new AiInvalidStructuredOutputError(providerId));
+      }
       const resolved = await resolveConfiguredClient(
         input.selection,
         requiredCapabilitiesForStructuredOutput(input.requiredCapabilities),
@@ -442,18 +493,14 @@ export const createOpenAiAiProviderAdapter = ({
             {
               model: resolved.value.model.remoteModelId,
               input: input.prompt,
-              ...(input.outputSchema === undefined
-                ? {}
-                : {
-                    text: {
-                      format: {
-                        type: "json_schema",
-                        name: "neutral_news_response",
-                        strict: true,
-                        schema: input.outputSchema,
-                      },
-                    },
-                  }),
+              text: {
+                format: {
+                  type: "json_schema",
+                  name: "neutral_news_response",
+                  strict: true,
+                  schema: input.outputSchema,
+                },
+              },
             },
             { signal },
           ),
@@ -541,10 +588,10 @@ export const createOpenAiAiProviderAdapter = ({
         options: input.options,
         policy,
         provider: providerId,
-        run: ({ signal }) => resolved.value.models.list({ signal }),
+        run: ({ signal }) => collectRemoteModels(resolved.value.models.list({ signal })),
       });
 
-      return response.ok ? ok(remoteModelsFromResponse(response.value)) : response;
+      return response.ok ? ok(response.value) : response;
     },
 
     testCredential: async (input) => {
@@ -567,13 +614,13 @@ export const createOpenAiAiProviderAdapter = ({
         options: input.options,
         policy,
         provider: providerId,
-        run: ({ signal }) => client.models.list({ signal }),
+        run: ({ signal }) => collectRemoteModels(client.models.list({ signal })),
       });
 
       return response.ok
         ? ok({
             providerId,
-            accessibleModelCount: remoteModelsFromResponse(response.value).length,
+            accessibleModelCount: response.value.length,
           })
         : response;
     },

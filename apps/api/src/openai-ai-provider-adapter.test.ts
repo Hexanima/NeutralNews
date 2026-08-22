@@ -4,6 +4,8 @@ import {
   AiInvalidStructuredOutputError,
   AiProviderRejectedError,
   ExternalPortError,
+  PortCancelledError,
+  PortLimitExceededError,
   initialAiProviderCatalogSnapshot,
   isErr,
   isOk,
@@ -99,6 +101,16 @@ const createFakeClient = (): FakeOpenAiClient => ({
   },
 });
 
+
+const createPaginatedModels = (pages: readonly (readonly unknown[])[]) => ({
+  async *[Symbol.asyncIterator]() {
+    for (const page of pages) {
+      for (const model of page) {
+        yield model;
+      }
+    }
+  },
+});
 const createRepository = (
   reference: string | null,
   models: readonly AiModelDefinition[] = initialAiProviderCatalogSnapshot.models,
@@ -270,6 +282,37 @@ describe("OpenAI AI provider adapter", () => {
     }
   });
 
+  it("lists accessible models from every paginated OpenAI page", async () => {
+    const client = createFakeClient();
+    client.models.listResult = createPaginatedModels([
+      [
+        {
+          id: "gpt-5.6-terra",
+          created: 1784980800,
+          owned_by: "openai",
+        },
+      ],
+      [
+        {
+          id: "gpt-5.6-sol",
+          created: 1785067200,
+          owned_by: "openai",
+        },
+      ],
+    ]);
+    const { adapter } = await createAdapter({ client });
+
+    const result = await adapter.listAccessibleModels({ providerId: "openai" });
+
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result.value.map((model) => model.id)).toEqual([
+        "gpt-5.6-terra",
+        "gpt-5.6-sol",
+      ]);
+    }
+  });
+
   it("lists accessible models using the credential stored in the vault", async () => {
     const { adapter, createdApiKeys } = await createAdapter();
 
@@ -304,6 +347,26 @@ describe("OpenAI AI provider adapter", () => {
     expect(isOk(description) && description.value.configured).toBe(false);
     if (isOk(result)) {
       expect(result.value).toEqual({ providerId: "openai", accessibleModelCount: 1 });
+    }
+  });
+
+  it("counts every paginated model when testing an ephemeral credential", async () => {
+    const client = createFakeClient();
+    client.models.listResult = createPaginatedModels([
+      [{ id: "gpt-5.6-terra", created: 1784980800, owned_by: "openai" }],
+      [{ id: "gpt-5.6-sol", created: 1785067200, owned_by: "openai" }],
+      [{ id: "gpt-5.6-luna", created: 1785153600, owned_by: "openai" }],
+    ]);
+    const { adapter } = await createAdapter({ client, reference: null });
+
+    const result = await adapter.testCredential({
+      providerId: "openai",
+      credentialValues: [{ fieldId: "api_key", value: "sk-ephemeral" }],
+    });
+
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result.value.accessibleModelCount).toBe(3);
     }
   });
 
@@ -354,6 +417,56 @@ describe("OpenAI AI provider adapter", () => {
     }
   });
 
+  it("normalizes provider timeouts to the port limit error contract", async () => {
+    const client = createFakeClient();
+    client.models.list = async function list(options) {
+      this.calls.push(options);
+      await new Promise(() => undefined);
+    };
+    const { adapter } = await createAdapter({ client, externalTimeoutMs: 1 });
+
+    const result = await adapter.listAccessibleModels({ providerId: "openai" });
+
+    expect(isErr(result)).toBe(true);
+    if (isErr(result)) {
+      expect(result.error).toBeInstanceOf(PortLimitExceededError);
+      expect(result.error.limitName).toBe("timeoutMs");
+    }
+  });
+
+  it("normalizes caller cancellation to the port cancellation error contract", async () => {
+    const client = createFakeClient();
+    const abortController = new AbortController();
+    abortController.abort();
+    const { adapter } = await createAdapter({ client });
+
+    const result = await adapter.listAccessibleModels({
+      providerId: "openai",
+      options: { signal: abortController.signal },
+    });
+
+    expect(isErr(result)).toBe(true);
+    if (isErr(result)) {
+      expect(result.error).toBeInstanceOf(PortCancelledError);
+    }
+  });
+
+  it("rejects structured generation without a JSON schema before calling OpenAI", async () => {
+    const client = createFakeClient();
+    const { adapter } = await createAdapter({ client });
+
+    const result = await adapter.generateStructuredResponse({
+      selection: { providerId: "openai", modelId: "gpt-5.6-terra" },
+      requiredCapabilities: ["structured_outputs"],
+      prompt: "Generar resumen",
+    } as Parameters<typeof adapter.generateStructuredResponse>[0]);
+
+    expect(isErr(result)).toBe(true);
+    expect(client.responses.calls).toHaveLength(0);
+    if (isErr(result)) {
+      expect(result.error).toBeInstanceOf(AiInvalidStructuredOutputError);
+    }
+  });
   it("maps transient provider failures through the external port error contract", async () => {
     const client = createFakeClient();
     client.models.listError = { status: 500 };

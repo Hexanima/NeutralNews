@@ -54,7 +54,7 @@ export interface AiGenerationPort {
     selection: AiModelSelection;
     requiredCapabilities: readonly AiCapability[];
     prompt: string;
-    outputSchema?: JsonValue | undefined;
+    outputSchema: JsonValue;
     options?: LimitedPortOperationOptions | undefined;
   }) => AsyncResult<AiGenerationResult, PortError>;
 
