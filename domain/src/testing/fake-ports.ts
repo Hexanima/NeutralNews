@@ -7,8 +7,12 @@ import type {
 } from "../entities/editorial-result.js";
 import type { NewsSource } from "../entities/news-source.js";
 import type {
+  AiAccessibleModel,
+  AiCredentialTestResult,
   AiGenerationPort,
   AiGenerationResult,
+  AiUsageMetrics,
+  AiWebSearchResult,
   ArticleExtractionResult,
   ArticleExtractorPort,
   CacheKeyInput,
@@ -271,6 +275,12 @@ export interface FakeAiGenerationPortOptions {
   result?: Result<AiGenerationResult, PortError> | undefined;
   output?: JsonValue | undefined;
   citations?: AiGenerationResult["citations"] | undefined;
+  usage?: AiUsageMetrics | undefined;
+  webSearchText?: string | undefined;
+  webSearchResult?: Result<AiWebSearchResult, PortError> | undefined;
+  remoteModels?: readonly AiAccessibleModel[] | undefined;
+  listAccessibleModelsResult?: Result<readonly AiAccessibleModel[], PortError> | undefined;
+  credentialTestResult?: Result<AiCredentialTestResult, PortError> | undefined;
 }
 
 export interface FakeAiGenerationPort extends AiGenerationPort {
@@ -278,6 +288,11 @@ export interface FakeAiGenerationPort extends AiGenerationPort {
     generateStructuredResponse: Parameters<
       AiGenerationPort["generateStructuredResponse"]
     >[0][];
+    searchWeb: Parameters<AiGenerationPort["searchWeb"]>[0][];
+    listAccessibleModels: Parameters<
+      AiGenerationPort["listAccessibleModels"]
+    >[0][];
+    testCredential: Parameters<AiGenerationPort["testCredential"]>[0][];
   };
 }
 
@@ -286,6 +301,9 @@ export const createFakeAiGenerationPort = (
 ): FakeAiGenerationPort => {
   const calls: FakeAiGenerationPort["calls"] = {
     generateStructuredResponse: [],
+    searchWeb: [],
+    listAccessibleModels: [],
+    testCredential: [],
   };
 
   return {
@@ -298,12 +316,40 @@ export const createFakeAiGenerationPort = (
         ok({
           output: options.output ?? {},
           citations: options.citations ?? [],
+          usage: options.usage ?? {},
+        })
+      );
+    },
+    searchWeb: async (input) => {
+      calls.searchWeb.push(input);
+
+      return (
+        options.webSearchResult ??
+        ok({
+          text: options.webSearchText ?? "",
+          citations: options.citations ?? [],
+          usage: options.usage ?? {},
+        })
+      );
+    },
+    listAccessibleModels: async (input) => {
+      calls.listAccessibleModels.push(input);
+
+      return options.listAccessibleModelsResult ?? ok(options.remoteModels ?? []);
+    },
+    testCredential: async (input) => {
+      calls.testCredential.push(input);
+
+      return (
+        options.credentialTestResult ??
+        ok({
+          providerId: input.providerId,
+          accessibleModelCount: options.remoteModels?.length ?? 0,
         })
       );
     },
   };
 };
-
 export interface FakeEditorialGenerationPortOptions {
   triangulation: TriangulationResult;
   rewrite: RewriteResult;
