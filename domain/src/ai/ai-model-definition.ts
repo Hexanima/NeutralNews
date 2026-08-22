@@ -9,6 +9,7 @@ export type AiCapability =
   | "reasoning_high";
 
 export type AiCredentialFieldType = "secret" | "text" | "url";
+export type AiModelCompatibilityStatus = "compatible" | "incompatible" | "unknown";
 
 export interface AiCredentialFieldDefinition {
   id: string;
@@ -33,6 +34,7 @@ export interface AiModelDefinition {
   modelId: string;
   remoteModelId: string;
   capabilities: readonly AiCapability[];
+  compatibilityStatus: AiModelCompatibilityStatus;
 }
 
 export interface AiModelSelection {

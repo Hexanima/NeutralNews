@@ -32,6 +32,7 @@ const model: AiModelDefinition = {
   modelId: "gpt-5-mini",
   remoteModelId: "gpt-5-mini",
   capabilities: ["structured_outputs", "web_search", "reasoning_medium"],
+  compatibilityStatus: "compatible",
 };
 
 describe("AI model definitions", () => {
@@ -59,6 +60,7 @@ describe("AI model definitions", () => {
     expect(model.capabilities).toContain("structured_outputs");
     expect(model.capabilities).toContain("web_search");
     expect(model.capabilities).toContain("reasoning_medium");
+    expect(model.compatibilityStatus).toBe("compatible");
     expect(selection).toEqual({ providerId: "openai", modelId: "gpt-5-mini" });
   });
 
