@@ -8,6 +8,8 @@ import type {
   AiProviderDefinition,
 } from "./ai-model-definition.js";
 
+export const aiProviderCatalogSchemaVersion = 1;
+
 export interface AiProviderCatalogSnapshot {
   readonly schemaVersion: number;
   readonly providers: readonly AiProviderDefinition[];
@@ -69,9 +71,6 @@ const invalidValue = (field: AiProviderCatalogField, value: unknown) =>
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
-
-const isPositiveInteger = (value: unknown): value is number =>
-  typeof value === "number" && Number.isInteger(value) && value >= 1;
 
 const isNonEmptyString = (value: unknown): value is string =>
   typeof value === "string" && value.trim() !== "";
@@ -180,8 +179,8 @@ export const createAiProviderCatalog = (
     return err(new InvalidAiProviderCatalogError([invalidValue("providers", snapshot)]));
   }
 
-  const schemaVersion = isPositiveInteger(snapshot.schemaVersion)
-    ? ok(snapshot.schemaVersion)
+  const schemaVersion = snapshot.schemaVersion === aiProviderCatalogSchemaVersion
+    ? ok(aiProviderCatalogSchemaVersion)
     : err(invalidValue("schemaVersion", snapshot.schemaVersion));
   const providers = Array.isArray(snapshot.providers)
     ? snapshot.providers.map(createProvider)

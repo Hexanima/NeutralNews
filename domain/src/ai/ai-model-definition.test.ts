@@ -80,6 +80,20 @@ describe("AI model definitions", () => {
     }
   });
 
+  it("rejects a selected model that has unknown compatibility", () => {
+    const result = validateAiModelSelection({
+      providers: [provider],
+      models: [{ ...model, compatibilityStatus: "unknown" }],
+      selection: { providerId: "openai", modelId: "gpt-5-mini" },
+      requiredCapabilities: ["structured_outputs", "web_search"],
+    });
+
+    expect(isErr(result)).toBe(true);
+    if (isErr(result)) {
+      expect(result.error).toBeInstanceOf(AiModelIncompatibleError);
+    }
+  });
+
   it("rejects a selected model that is marked incompatible", () => {
     const result = validateAiModelSelection({
       providers: [provider],

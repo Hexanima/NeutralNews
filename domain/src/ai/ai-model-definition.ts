@@ -158,7 +158,7 @@ export const validateAiModelSelection = ({
     );
   }
 
-  if (model.compatibilityStatus === "incompatible") {
+  if (model.compatibilityStatus !== "compatible") {
     return err(
       new AiModelIncompatibleError(selection.providerId, selection.modelId),
     );

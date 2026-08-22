@@ -63,6 +63,15 @@ describe("initial AI provider catalog", () => {
     }
   });
 
+  it("rejects unknown schema versions", () => {
+    const result = createAiProviderCatalog({
+      ...initialAiProviderCatalogSnapshot,
+      schemaVersion: 2,
+    });
+
+    expect(result.ok).toBe(false);
+  });
+
   it("rejects invalid schema versions, duplicate models, and models without providers", () => {
     const invalidSchema = createAiProviderCatalog({
       ...initialAiProviderCatalogSnapshot,

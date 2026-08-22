@@ -126,7 +126,7 @@ describe("AI provider effective configuration", () => {
         {
           ...sol,
           remoteModelId: "gpt-5.6-sol-override",
-          compatibilityStatus: "unknown",
+          compatibilityStatus: "compatible",
         },
       ],
     });
@@ -145,7 +145,7 @@ describe("AI provider effective configuration", () => {
     ).toMatchObject({
       modelId: "gpt-5.6-sol",
       remoteModelId: "gpt-5.6-sol-override",
-      compatibilityStatus: "unknown",
+      compatibilityStatus: "compatible",
     });
     expect(configuration.credentialReferences).toEqual([
       {
@@ -175,6 +175,29 @@ describe("AI provider effective configuration", () => {
     }
   });
 
+
+  it("rejects effective selections that point to unknown compatibility models", () => {
+    const unknownSelection = createEffectiveAiProviderConfiguration(
+      initialAiProviderCatalogSnapshot,
+      {
+        schemaVersion: 1,
+        configurationVersion: 1,
+        activeSelection: { providerId: "openai", modelId: "gpt-5.6-sol" },
+        credentialReferences: [],
+        providerOverrides: [],
+        modelOverrides: [
+          {
+            ...initialAiProviderCatalogSnapshot.models.find(
+              (model) => model.modelId === "gpt-5.6-sol",
+            )!,
+            compatibilityStatus: "unknown",
+          },
+        ],
+      },
+    );
+
+    expect(unknownSelection.ok).toBe(false);
+  });
   it("rejects effective selections that point to missing or incompatible models in the provided catalog", () => {
     const missingSelection = createEffectiveAiProviderConfiguration(
       initialAiProviderCatalogSnapshot,
