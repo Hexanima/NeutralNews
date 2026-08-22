@@ -87,9 +87,14 @@ const fetchFromApp = async (
       ...init,
       headers:
         init?.json === undefined
-          ? { ...createSessionHeader(), ...init?.headers }
+          ? {
+              ...createSessionHeader(),
+              origin: "http://127.0.0.1:3000",
+              ...init?.headers,
+            }
           : {
               ...createSessionHeader(),
+              origin: "http://127.0.0.1:3000",
               "content-type": "application/json",
               ...init.headers,
             },

@@ -8,10 +8,18 @@ import {
   serializeSessionCookie,
   verifyPassword,
 } from "./authentication.js";
+import {
+  createLoginAttemptLimiter,
+  type LoginAttemptLimiter,
+} from "./login-attempt-limiter.js";
 
 const loginPath = "/api/auth/login";
 const logoutPath = "/api/auth/logout";
 const maxJsonBodyBytes = 64 * 1024;
+
+export interface AuthenticationRequestOptions {
+  loginAttemptLimiter?: LoginAttemptLimiter;
+}
 
 const sendJson = (
   response: ServerResponse,
@@ -104,17 +112,12 @@ export const handleAuthenticationRequest = async (
   request: IncomingMessage,
   response: ServerResponse,
   config?: ApiConfig,
+  options: AuthenticationRequestOptions = {},
 ): Promise<boolean> => {
   const pathname = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
   const secure = isSecureRequest(request, config);
+  const loginAttemptLimiter = options.loginAttemptLimiter ?? createLoginAttemptLimiter();
 
-  if (pathname === logoutPath && request.method === "POST") {
-    response.writeHead(204, {
-      "set-cookie": serializeExpiredSessionCookie({ secure }),
-    });
-    response.end();
-    return true;
-  }
 
   if (pathname !== loginPath || request.method !== "POST") {
     return false;
@@ -124,6 +127,17 @@ export const handleAuthenticationRequest = async (
     sendJson(response, 500, { error: "InternalServerError" });
     return true;
   }
+  const retryAfterSeconds = loginAttemptLimiter.getRetryAfterSeconds();
+
+  if (retryAfterSeconds !== null) {
+    response.writeHead(429, {
+      "content-type": "application/json",
+      "retry-after": String(retryAfterSeconds),
+    });
+    response.end(JSON.stringify({ error: "TooManyRequests" }));
+    return true;
+  }
+
 
   const password = await readPassword(request);
   const authenticated =
@@ -131,13 +145,36 @@ export const handleAuthenticationRequest = async (
     (await verifyPassword(password, config.accessPasswordHash));
 
   if (!authenticated) {
+    loginAttemptLimiter.recordFailure();
     sendJson(response, 401, { error: "Unauthorized" });
     return true;
   }
 
   const token = createSession({ secret: config.sessionSecret });
+  loginAttemptLimiter.reset();
   response.writeHead(204, {
     "set-cookie": serializeSessionCookie({ token, secure }),
+  });
+  response.end();
+  return true;
+};
+
+
+export const handleLogoutRequest = (
+  request: IncomingMessage,
+  response: ServerResponse,
+  config?: ApiConfig,
+): boolean => {
+  const pathname = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
+
+  if (pathname !== logoutPath || request.method !== "POST") {
+    return false;
+  }
+
+  response.writeHead(204, {
+    "set-cookie": serializeExpiredSessionCookie({
+      secure: isSecureRequest(request, config),
+    }),
   });
   response.end();
   return true;
