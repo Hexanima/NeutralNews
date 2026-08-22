@@ -350,6 +350,7 @@ describe("api configuration", () => {
     expect(envExample).toContain("NEUTRALNEWS_EXTERNAL_MAX_ATTEMPTS=");
     expect(envExample).toContain("NEUTRALNEWS_EXTERNAL_RETRY_DELAY_MS=");
     expect(envExample).toContain("NEUTRALNEWS_TRUSTED_PROXY_ADDRESSES=");
+    expect(envExample).toContain("NEUTRALNEWS_ALLOWED_ORIGINS=");
     expect(envExample).toContain("NEUTRALNEWS_ACCESS_PASSWORD_HASH=");
     expect(envExample).toContain("NEUTRALNEWS_SESSION_SECRET=");
     expect(envExample).toContain("NEUTRALNEWS_CREDENTIAL_VAULT_KEY=");
