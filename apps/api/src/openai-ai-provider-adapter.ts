@@ -293,7 +293,13 @@ const collectCitations = (
 
   const isBlocked = (rawUrl: string): boolean => {
     try {
-      const hostname = new URL(rawUrl).hostname.toLowerCase();
+      const parsed = new URL(rawUrl);
+
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        return true;
+      }
+
+      const hostname = parsed.hostname.toLowerCase();
 
       return [...blocked].some(
         (domain) => hostname === domain || hostname.endsWith(`.${domain}`),
