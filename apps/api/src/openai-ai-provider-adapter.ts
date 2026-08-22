@@ -551,6 +551,17 @@ export const createOpenAiAiProviderAdapter = ({
 }: OpenAiAiProviderAdapterOptions): AiGenerationPort => {
   const policy = { ...operationDefaults, ...externalServicePolicy };
 
+  const createOpenAiClientSafely = (
+    apiKey: string,
+    operationName: string,
+  ): Result<OpenAiClientLike, PortError> => {
+    try {
+      return ok(createClient({ apiKey }));
+    } catch {
+      return err(new ExternalPortError(operationName, "PermanentFailure"));
+    }
+  };
+
   const resolveConfiguredClient = async (
     selection: AiModelSelection,
     requiredCapabilities: readonly AiCapability[],
@@ -578,7 +589,9 @@ export const createOpenAiAiProviderAdapter = ({
       return apiKey;
     }
 
-    return ok({ client: createClient({ apiKey: apiKey.value }), model: model.value });
+    const client = createOpenAiClientSafely(apiKey.value, operationName);
+
+    return client.ok ? ok({ client: client.value, model: model.value }) : client;
   };
 
   const resolveClientForProvider = async (
@@ -597,7 +610,9 @@ export const createOpenAiAiProviderAdapter = ({
 
     const apiKey = await resolveStoredApiKey(configuration.value, credentialVault);
 
-    return apiKey.ok ? ok(createClient({ apiKey: apiKey.value })) : apiKey;
+    return apiKey.ok
+      ? createOpenAiClientSafely(apiKey.value, operationName)
+      : apiKey;
   };
 
   return {
@@ -780,14 +795,19 @@ export const createOpenAiAiProviderAdapter = ({
         return err(new AiCredentialUnavailableError(providerId, apiKeyFieldId));
       }
 
-      const client = createClient({ apiKey });
+      const client = createOpenAiClientSafely(apiKey, operationName);
+
+      if (!client.ok) {
+        return client;
+      }
+
       const response = await withExternalOperation({
         operationName,
         idempotent: true,
         options: input.options,
         policy,
         provider: providerId,
-        run: ({ signal }) => collectRemoteModels(client.models.list({ signal })),
+        run: ({ signal }) => collectRemoteModels(client.value.models.list({ signal })),
       });
 
       return response.ok

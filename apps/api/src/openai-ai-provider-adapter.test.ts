@@ -183,6 +183,7 @@ const createAdapter = async (options: {
   reference?: string | null;
   models?: readonly AiModelDefinition[];
   externalTimeoutMs?: number | undefined;
+  createClientError?: unknown;
 } = {}) => {
   const vault = createInMemoryCredentialVault();
   const saved = options.reference === undefined
@@ -197,6 +198,10 @@ const createAdapter = async (options: {
     configurationRepository: createRepository(reference, options.models),
     credentialVault: vault,
     createClient: ({ apiKey }) => {
+      if (options.createClientError !== undefined) {
+        throw options.createClientError;
+      }
+
       createdApiKeys.push(apiKey);
       return client;
     },
@@ -437,6 +442,68 @@ describe("OpenAI AI provider adapter", () => {
     }
   });
 
+  it("normalizes structured generation client factory failures", async () => {
+    const client = createFakeClient();
+    const { adapter } = await createAdapter({
+      client,
+      createClientError: new Error("sk-from-vault Generar resumen"),
+    });
+
+    const result = await adapter.generateStructuredResponse({
+      selection: { providerId: "openai", modelId: "gpt-5.6-terra" },
+      requiredCapabilities: ["structured_outputs"],
+      prompt: "Generar resumen",
+      outputSchema: { type: "object" },
+    });
+
+    expect(isErr(result)).toBe(true);
+    expect(client.responses.calls).toHaveLength(0);
+    if (isErr(result)) {
+      expect(result.error).toBeInstanceOf(ExternalPortError);
+      expect(JSON.stringify(result.error)).not.toContain("sk-from-vault");
+      expect(JSON.stringify(result.error)).not.toContain("Generar resumen");
+    }
+  });
+
+  it("normalizes model listing client factory failures", async () => {
+    const client = createFakeClient();
+    const { adapter } = await createAdapter({
+      client,
+      createClientError: new Error("sk-from-vault"),
+    });
+
+    const result = await adapter.listAccessibleModels({ providerId: "openai" });
+
+    expect(isErr(result)).toBe(true);
+    expect(client.models.calls).toHaveLength(0);
+    if (isErr(result)) {
+      expect(result.error).toBeInstanceOf(ExternalPortError);
+      expect(JSON.stringify(result.error)).not.toContain("sk-from-vault");
+    }
+  });
+
+  it("normalizes ephemeral credential client factory failures", async () => {
+    const client = createFakeClient();
+    const { adapter, vault } = await createAdapter({
+      client,
+      reference: null,
+      createClientError: new Error("sk-ephemeral"),
+    });
+
+    const result = await adapter.testCredential({
+      providerId: "openai",
+      credentialValues: [{ fieldId: "api_key", value: "sk-ephemeral" }],
+    });
+    const description = await vault.describeSecret("openai");
+
+    expect(isErr(result)).toBe(true);
+    expect(client.models.calls).toHaveLength(0);
+    expect(isOk(description) && description.value.configured).toBe(false);
+    if (isErr(result)) {
+      expect(result.error).toBeInstanceOf(ExternalPortError);
+      expect(JSON.stringify(result.error)).not.toContain("sk-ephemeral");
+    }
+  });
   it.each([
     ["unavailable", new CredentialVaultUnavailableError()],
     [
