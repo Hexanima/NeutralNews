@@ -119,7 +119,7 @@ const toIsoDateTime = (unixSeconds: number | undefined): IsoDateTimeString | und
     : (new Date(unixSeconds * 1000).toISOString() as IsoDateTimeString);
 
 const defaultCreateClient = ({ apiKey }: OpenAiClientFactoryInput): OpenAiClientLike =>
-  new OpenAI({ apiKey }) as OpenAiClientLike;
+  new OpenAI({ apiKey, maxRetries: 0 }) as OpenAiClientLike;
 
 const requiredCapabilitiesForStructuredOutput = (
   requiredCapabilities: readonly AiCapability[],
@@ -248,6 +248,42 @@ const parseStructuredOutput = (
   }
 };
 
+const containsModelRefusal = (value: unknown): boolean => {
+  if (Array.isArray(value)) {
+    return value.some(containsModelRefusal);
+  }
+
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  if (getString(value, "type") === "refusal" || getString(value, "refusal") !== undefined) {
+    return true;
+  }
+
+  return Object.values(value).some(containsModelRefusal);
+};
+
+const normalizeResponseState = (
+  response: unknown,
+  operationName: string,
+): Result<void, PortError> => {
+  const status = getString(response, "status");
+
+  if (status !== undefined && status !== "completed") {
+    if (status === "cancelled") {
+      return err(new PortCancelledError(operationName));
+    }
+
+    return err(new ExternalPortError(operationName, "PermanentFailure"));
+  }
+
+  if (containsModelRefusal(response)) {
+    return err(new AiProviderRejectedError(providerId, operationName));
+  }
+
+  return ok(undefined);
+};
 const collectCitations = (
   value: unknown,
   blockedDomains: readonly string[] = [],
@@ -493,6 +529,7 @@ export const createOpenAiAiProviderAdapter = ({
             {
               model: resolved.value.model.remoteModelId,
               input: input.prompt,
+              store: false,
               text: {
                 format: {
                   type: "json_schema",
@@ -508,6 +545,12 @@ export const createOpenAiAiProviderAdapter = ({
 
       if (!response.ok) {
         return response;
+      }
+
+      const responseState = normalizeResponseState(response.value, operationName);
+
+      if (!responseState.ok) {
+        return responseState;
       }
 
       const output = parseStructuredOutput(response.value);
@@ -548,6 +591,7 @@ export const createOpenAiAiProviderAdapter = ({
             {
               model: resolved.value.model.remoteModelId,
               input: input.query,
+              store: false,
               tools: [
                 {
                   type: "web_search",
@@ -563,6 +607,12 @@ export const createOpenAiAiProviderAdapter = ({
 
       if (!response.ok) {
         return response;
+      }
+
+      const responseState = normalizeResponseState(response.value, operationName);
+
+      if (!responseState.ok) {
+        return responseState;
       }
 
       const result: AiWebSearchResult = {

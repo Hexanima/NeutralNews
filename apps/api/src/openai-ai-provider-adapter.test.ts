@@ -14,11 +14,28 @@ import {
   type EffectiveAiProviderConfiguration,
   type Result,
 } from "app-domain";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createInMemoryCredentialVault } from "./credential-vault.js";
 import { createOpenAiAiProviderAdapter } from "./openai-ai-provider-adapter.js";
 import type { JsonAiProviderConfigurationRepository } from "./ai-provider-configuration-repository.js";
+
+const openAiConstructorInputs = vi.hoisted((): unknown[] => []);
+
+vi.mock("openai", () => ({
+  default: class FakeOpenAI {
+    public readonly responses = {
+      create: async () => ({ status: "completed", output_text: "{}" }),
+    };
+    public readonly models = {
+      list: async () => ({ data: [] }),
+    };
+
+    constructor(input: unknown) {
+      openAiConstructorInputs.push(input);
+    }
+  },
+}));
 
 interface FakeResponsesResource {
   calls: unknown[];
@@ -194,6 +211,7 @@ describe("OpenAI AI provider adapter", () => {
     expect(client.responses.calls[0]).toMatchObject({
       model: "gpt-5.6-terra",
       input: "Generar resumen",
+      store: false,
       text: {
         format: {
           type: "json_schema",
@@ -247,6 +265,7 @@ describe("OpenAI AI provider adapter", () => {
     expect(client.responses.calls[0]).toMatchObject({
       model: "gpt-5.6-terra",
       input: "presupuesto nacional",
+      store: false,
       tools: [
         {
           type: "web_search",
@@ -383,6 +402,33 @@ describe("OpenAI AI provider adapter", () => {
     }
   });
 
+  it("creates the default OpenAI SDK client with retries disabled", async () => {
+    openAiConstructorInputs.length = 0;
+    const vault = createInMemoryCredentialVault();
+    const saved = await vault.saveSecret("openai", "sk-from-vault");
+
+    if (!isOk(saved)) {
+      throw saved.error;
+    }
+
+    const adapter = createOpenAiAiProviderAdapter({
+      configurationRepository: createRepository(saved.value.reference),
+      credentialVault: vault,
+      externalServicePolicy: {
+        timeoutMs: 1000,
+        maxAttempts: 1,
+        retryDelayMs: 0,
+      },
+    });
+
+    const result = await adapter.listAccessibleModels({ providerId: "openai" });
+
+    expect(isOk(result)).toBe(true);
+    expect(openAiConstructorInputs).toEqual([
+      { apiKey: "sk-from-vault", maxRetries: 0 },
+    ]);
+  });
+
   it("normalizes provider rejection and invalid structured output without leaking secrets or prompts", async () => {
     const rejectedClient = createFakeClient();
     rejectedClient.responses.createError = { status: 401, message: "sk-from-vault Generar resumen" };
@@ -415,6 +461,91 @@ describe("OpenAI AI provider adapter", () => {
     expect(isErr(invalidResult)).toBe(true);
     if (isErr(invalidResult)) {
       expect(invalidResult.error).toBeInstanceOf(AiInvalidStructuredOutputError);
+    }
+  });
+
+  it("normalizes non-completed structured Responses before parsing output", async () => {
+    const cases: readonly {
+      status: string;
+      expectedError: new (...args: never[]) => unknown;
+    }[] = [
+      { status: "failed", expectedError: ExternalPortError },
+      { status: "cancelled", expectedError: PortCancelledError },
+      { status: "incomplete", expectedError: ExternalPortError },
+    ];
+
+    for (const { status, expectedError } of cases) {
+      const client = createFakeClient();
+      client.responses.createResult = {
+        status,
+        output_text: JSON.stringify({ summary: "ok" }),
+      };
+      const { adapter } = await createAdapter({ client });
+
+      const result = await adapter.generateStructuredResponse({
+        selection: { providerId: "openai", modelId: "gpt-5.6-terra" },
+        requiredCapabilities: ["structured_outputs"],
+        prompt: "Generar resumen",
+        outputSchema: { type: "object" },
+      });
+
+      expect(isErr(result)).toBe(true);
+      if (isErr(result)) {
+        expect(result.error).toBeInstanceOf(expectedError);
+        expect(JSON.stringify(result.error)).not.toContain("Generar resumen");
+        expect(JSON.stringify(result.error)).not.toContain("sk-from-vault");
+      }
+    }
+  });
+
+  it("normalizes model refusals before parsing structured output", async () => {
+    const client = createFakeClient();
+    client.responses.createResult = {
+      status: "completed",
+      output_text: "",
+      output: [
+        {
+          type: "message",
+          content: [{ type: "refusal", refusal: "No puedo responder" }],
+        },
+      ],
+    };
+    const { adapter } = await createAdapter({ client });
+
+    const result = await adapter.generateStructuredResponse({
+      selection: { providerId: "openai", modelId: "gpt-5.6-terra" },
+      requiredCapabilities: ["structured_outputs"],
+      prompt: "Generar resumen",
+      outputSchema: { type: "object" },
+    });
+
+    expect(isErr(result)).toBe(true);
+    if (isErr(result)) {
+      expect(result.error).toBeInstanceOf(AiProviderRejectedError);
+      expect(JSON.stringify(result.error)).not.toContain("Generar resumen");
+      expect(JSON.stringify(result.error)).not.toContain("No puedo responder");
+    }
+  });
+
+  it("does not return successful web search results for non-completed Responses", async () => {
+    const client = createFakeClient();
+    client.responses.createResult = {
+      status: "failed",
+      output_text: "",
+    };
+    const { adapter } = await createAdapter({ client });
+
+    const result = await adapter.searchWeb({
+      selection: { providerId: "openai", modelId: "gpt-5.6-terra" },
+      requiredCapabilities: ["web_search"],
+      query: "presupuesto nacional",
+    });
+
+    expect(isErr(result)).toBe(true);
+    if (isErr(result)) {
+      expect(result.error).toBeInstanceOf(ExternalPortError);
+      expect(JSON.stringify(result.error)).not.toContain("presupuesto nacional");
+      expect(JSON.stringify(result.error)).not.toContain("sk-from-vault");
     }
   });
 
