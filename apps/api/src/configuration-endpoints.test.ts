@@ -11,10 +11,11 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createApp, loadApiConfig } from "./app.js";
+import { createSession } from "./authentication.js";
 
 const temporaryDirectories: string[] = [];
 const validPasswordHash =
-  "$2b$12$C6UzMDM.H6dfI/f/IKcEeO7FDgWz8WUyZVJXl2DrT0S6QYzR2v9Da";
+  "$argon2id$v=19$m=32,t=2,p=2$MDEyMzQ1Njc4OWFiY2RlZg==$DFYj7N4xFFUiI8oxwK/k/skRZiCNIGR5xOGTpdhlPKs=";
 const validSessionSecret = "0123456789abcdef0123456789abcdef";
 const configPath = join("configuration", "news-sources.json");
 const firstDefaultSource = initialNewsSourceCatalogSnapshot.sources[0]!;
@@ -56,6 +57,10 @@ const createValidEnvironment = async (): Promise<NodeJS.ProcessEnv> => ({
   NEUTRALNEWS_DATA_DIR: await createTemporaryDirectory("neutralnews-data-"),
 });
 
+const createSessionHeader = () => ({
+  cookie: `neutralnews_session=${createSession({ secret: validSessionSecret })}`,
+});
+
 const fetchFromApp = async (
   path: string,
   environment: NodeJS.ProcessEnv,
@@ -82,8 +87,12 @@ const fetchFromApp = async (
       ...init,
       headers:
         init?.json === undefined
-          ? init?.headers
-          : { "content-type": "application/json", ...init.headers },
+          ? { ...createSessionHeader(), ...init?.headers }
+          : {
+              ...createSessionHeader(),
+              "content-type": "application/json",
+              ...init.headers,
+            },
       body: init?.json === undefined ? init?.body : JSON.stringify(init.json),
     });
   } finally {

@@ -22,6 +22,10 @@ import {
   type ApiConfig,
 } from "./config.js";
 import {
+  handleAuthenticationRequest,
+  handleSessionGuard,
+} from "./authentication-endpoints.js";
+import {
   handleConfigurationRequest,
   type ConfigurationRequestOptions,
 } from "./configuration-endpoints.js";
@@ -276,6 +280,16 @@ export const requestHandler = async (
       (() => createHealthResponse(options.config));
 
     sendJson(response, 200, await healthResponseFactory(context));
+    return;
+  }
+
+  if (
+    await handleAuthenticationRequest(request, response, options.config)
+  ) {
+    return;
+  }
+
+  if (handleSessionGuard(request, response, options.config)) {
     return;
   }
 

@@ -18,10 +18,11 @@ import {
   resolveApiPort,
   startApp,
 } from "./app.js";
+import { createSession, sessionLifetimeSeconds } from "./authentication.js";
 
 const temporaryDirectories: string[] = [];
 const validPasswordHash =
-  "$2b$12$C6UzMDM.H6dfI/f/IKcEeO7FDgWz8WUyZVJXl2DrT0S6QYzR2v9Da";
+  "$argon2id$v=19$m=32,t=2,p=2$MDEyMzQ1Njc4OWFiY2RlZg==$DFYj7N4xFFUiI8oxwK/k/skRZiCNIGR5xOGTpdhlPKs=";
 const validSessionSecret = "0123456789abcdef0123456789abcdef";
 
 const createStaticRoot = async () => {
@@ -57,6 +58,7 @@ const fetchFromApp = async (
   staticRoot: string,
   path: string,
   environment?: NodeJS.ProcessEnv,
+  init?: RequestInit,
 ): Promise<Response> => {
   const server = createApp({
     staticRoot,
@@ -71,7 +73,7 @@ const fetchFromApp = async (
   const address = server.address() as AddressInfo;
 
   try {
-    return await fetch(`http://127.0.0.1:${address.port}${path}`);
+    return await fetch(`http://127.0.0.1:${address.port}${path}`, init);
   } finally {
     await new Promise<void>((resolve, reject) => {
       server.close((error) => {
@@ -85,6 +87,10 @@ const fetchFromApp = async (
     });
   }
 };
+
+const createSessionHeader = (secret = validSessionSecret, now = new Date()) => ({
+  cookie: `neutralnews_session=${createSession({ secret, now })}`,
+});
 
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -197,36 +203,116 @@ describe("api app", () => {
     expect(body).not.toContain("NEUTRALNEWS_DATA_DIR");
   });
 
-  it("serves the frontend index at the root route", async () => {
+  it("rejects frontend routes without a valid session", async () => {
     const staticRoot = await createStaticRoot();
-    const response = await fetchFromApp(staticRoot, "/");
+    const environment = await createValidEnvironment();
+    const response = await fetchFromApp(staticRoot, "/", environment);
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: "Unauthorized" });
+  });
+
+  it("serves the frontend index at the root route with a valid session", async () => {
+    const staticRoot = await createStaticRoot();
+    const environment = await createValidEnvironment();
+    const response = await fetchFromApp(staticRoot, "/", environment, {
+      headers: createSessionHeader(),
+    });
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/html");
     expect(await response.text()).toContain("SPA shell");
   });
 
-  it("serves static frontend assets", async () => {
+  it("serves static frontend assets with a valid session", async () => {
     const staticRoot = await createStaticRoot();
-    const response = await fetchFromApp(staticRoot, "/assets/app.js");
+    const environment = await createValidEnvironment();
+    const response = await fetchFromApp(staticRoot, "/assets/app.js", environment, {
+      headers: createSessionHeader(),
+    });
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/javascript");
     expect(await response.text()).toBe("console.log('asset');");
   });
 
-  it("falls back to the frontend index for SPA reload routes", async () => {
+  it("falls back to the frontend index for SPA reload routes with a valid session", async () => {
     const staticRoot = await createStaticRoot();
-    const response = await fetchFromApp(staticRoot, "/tema/argentina");
+    const environment = await createValidEnvironment();
+    const response = await fetchFromApp(
+      staticRoot,
+      "/tema/argentina",
+      environment,
+      { headers: createSessionHeader() },
+    );
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/html");
     expect(await response.text()).toContain("SPA shell");
   });
 
-  it("returns JSON not found responses for unknown API routes", async () => {
+  it("rejects configuration requests without a valid session", async () => {
     const staticRoot = await createStaticRoot();
-    const response = await fetchFromApp(staticRoot, "/api/desconocida");
+    const environment = await createValidEnvironment();
+    const response = await fetchFromApp(
+      staticRoot,
+      "/api/configuration/news-sources",
+      environment,
+    );
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: "Unauthorized" });
+  });
+
+  it("serves configuration requests with a valid session", async () => {
+    const staticRoot = await createStaticRoot();
+    const environment = await createValidEnvironment();
+    const response = await fetchFromApp(
+      staticRoot,
+      "/api/configuration/news-sources",
+      environment,
+      { headers: createSessionHeader() },
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("application/json");
+  });
+
+  it("rejects requests with tampered sessions", async () => {
+    const staticRoot = await createStaticRoot();
+    const environment = await createValidEnvironment();
+    const response = await fetchFromApp(
+      staticRoot,
+      "/api/configuration/news-sources",
+      environment,
+      { headers: { cookie: `${createSessionHeader().cookie}x` } },
+    );
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: "Unauthorized" });
+  });
+
+  it("rejects sessions when the seven day lifetime has elapsed", async () => {
+    const staticRoot = await createStaticRoot();
+    const environment = await createValidEnvironment();
+    const issuedAt = new Date(Date.now() - sessionLifetimeSeconds * 1_000);
+    const response = await fetchFromApp(
+      staticRoot,
+      "/api/configuration/news-sources",
+      environment,
+      { headers: createSessionHeader(validSessionSecret, issuedAt) },
+    );
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: "Unauthorized" });
+  });
+
+  it("returns JSON not found responses for unknown API routes with a valid session", async () => {
+    const staticRoot = await createStaticRoot();
+    const environment = await createValidEnvironment();
+    const response = await fetchFromApp(staticRoot, "/api/desconocida", environment, {
+      headers: createSessionHeader(),
+    });
 
     expect(response.status).toBe(404);
     expect(response.headers.get("content-type")).toContain("application/json");
@@ -350,9 +436,15 @@ describe("api app", () => {
     }
   });
 
-  it("rejects encoded path traversal attempts", async () => {
+  it("rejects encoded path traversal attempts with a valid session", async () => {
     const staticRoot = await createStaticRoot();
-    const response = await fetchFromApp(staticRoot, "/%2e%2e/package.json");
+    const environment = await createValidEnvironment();
+    const response = await fetchFromApp(
+      staticRoot,
+      "/%2e%2e/package.json",
+      environment,
+      { headers: createSessionHeader() },
+    );
 
     expect(response.status).toBe(404);
     expect(await response.text()).not.toContain("\"neutralnews\"");
