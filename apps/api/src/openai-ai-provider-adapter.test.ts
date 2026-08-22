@@ -149,6 +149,7 @@ const createAdapter = async (options: {
   client?: FakeOpenAiClient;
   reference?: string | null;
   models?: readonly AiModelDefinition[];
+  externalTimeoutMs?: number | undefined;
 } = {}) => {
   const vault = createInMemoryCredentialVault();
   const saved = options.reference === undefined
@@ -262,9 +263,9 @@ describe("OpenAI AI provider adapter", () => {
 
   it("rejects missing web search capability before calling OpenAI", async () => {
     const client = createFakeClient();
-    const models = initialAiProviderCatalogSnapshot.models.map((model) =>
+    const models: readonly AiModelDefinition[] = initialAiProviderCatalogSnapshot.models.map((model) =>
       model.modelId === "gpt-5.6-terra"
-        ? { ...model, capabilities: ["structured_outputs", "reasoning_high"] }
+        ? { ...model, capabilities: ["structured_outputs", "reasoning_high"] as const }
         : model,
     );
     const { adapter } = await createAdapter({ client, models });
@@ -433,7 +434,11 @@ describe("OpenAI AI provider adapter", () => {
     expect(elapsedMs).toBeLessThan(100);
     if (isErr(result)) {
       expect(result.error).toBeInstanceOf(PortLimitExceededError);
-      expect(result.error.limitName).toBe("timeoutMs");
+      const error = result.error;
+      if (!(error instanceof PortLimitExceededError)) {
+        throw error;
+      }
+      expect(error.limitName).toBe("timeoutMs");
     }
   });
 
@@ -462,7 +467,7 @@ describe("OpenAI AI provider adapter", () => {
       selection: { providerId: "openai", modelId: "gpt-5.6-terra" },
       requiredCapabilities: ["structured_outputs"],
       prompt: "Generar resumen",
-    } as Parameters<typeof adapter.generateStructuredResponse>[0]);
+    } as unknown as Parameters<typeof adapter.generateStructuredResponse>[0]);
 
     expect(isErr(result)).toBe(true);
     expect(client.responses.calls).toHaveLength(0);
@@ -480,8 +485,12 @@ describe("OpenAI AI provider adapter", () => {
     expect(isErr(result)).toBe(true);
     if (isErr(result)) {
       expect(result.error).toBeInstanceOf(ExternalPortError);
-      expect(result.error.category).toBe("TransientFailure");
-      expect(result.error.statusCode).toBe(500);
+      const error = result.error;
+      if (!(error instanceof ExternalPortError)) {
+        throw error;
+      }
+      expect(error.category).toBe("TransientFailure");
+      expect(error.statusCode).toBe(500);
     }
   });
 });
