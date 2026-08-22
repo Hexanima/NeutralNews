@@ -9,6 +9,7 @@ import {
   initialAiProviderCatalogSnapshot,
   isErr,
   isOk,
+  err,
   ok,
   type AiModelDefinition,
   type EffectiveAiProviderConfiguration,
@@ -16,7 +17,13 @@ import {
 } from "app-domain";
 import { describe, expect, it, vi } from "vitest";
 
-import { createInMemoryCredentialVault } from "./credential-vault.js";
+import {
+  CredentialVaultStorageError,
+  CredentialVaultUnavailableError,
+  createInMemoryCredentialVault,
+  type CredentialVault,
+  type CredentialVaultError,
+} from "./credential-vault.js";
 import { createOpenAiAiProviderAdapter } from "./openai-ai-provider-adapter.js";
 import type { JsonAiProviderConfigurationRepository } from "./ai-provider-configuration-repository.js";
 
@@ -161,6 +168,15 @@ const createRepository = (
     saveCredentialReference: async () => ok(configuration),
   };
 };
+
+const createReadFailingVault = (
+  vaultError: CredentialVaultError,
+): CredentialVault => ({
+  saveSecret: async () => err(vaultError),
+  readSecret: async () => err(vaultError),
+  describeSecret: async () => err(vaultError),
+  deleteSecret: async () => err(vaultError),
+});
 
 const createAdapter = async (options: {
   client?: FakeOpenAiClient;
@@ -421,6 +437,45 @@ describe("OpenAI AI provider adapter", () => {
     }
   });
 
+  it.each([
+    ["unavailable", new CredentialVaultUnavailableError()],
+    [
+      "read storage",
+      new CredentialVaultStorageError("read", new Error("sk-from-vault cred_v1_existing")),
+    ],
+    [
+      "decrypt storage",
+      new CredentialVaultStorageError("decrypt", new Error("sk-from-vault")),
+    ],
+  ])("maps credential vault %s errors as external failures", async (_caseName, vaultError) => {
+    const client = createFakeClient();
+    const createdApiKeys: string[] = [];
+    const adapter = createOpenAiAiProviderAdapter({
+      configurationRepository: createRepository("cred_v1_existing"),
+      credentialVault: createReadFailingVault(vaultError),
+      createClient: ({ apiKey }) => {
+        createdApiKeys.push(apiKey);
+        return client;
+      },
+      externalServicePolicy: {
+        timeoutMs: 1000,
+        maxAttempts: 1,
+        retryDelayMs: 0,
+      },
+    });
+
+    const result = await adapter.listAccessibleModels({ providerId: "openai" });
+
+    expect(isErr(result)).toBe(true);
+    expect(createdApiKeys).toEqual([]);
+    expect(client.models.calls).toHaveLength(0);
+    if (isErr(result)) {
+      expect(result.error).toBeInstanceOf(ExternalPortError);
+      expect(result.error).not.toBeInstanceOf(AiCredentialUnavailableError);
+      expect(JSON.stringify(result.error)).not.toContain("sk-from-vault");
+      expect(JSON.stringify(result.error)).not.toContain("cred_v1_existing");
+    }
+  });
   it("returns a credential error when the configured vault reference is unavailable", async () => {
     const { adapter, client } = await createAdapter({ reference: "cred_v1_missing" });
 

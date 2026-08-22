@@ -30,7 +30,7 @@ import {
 } from "app-domain";
 
 import type { JsonAiProviderConfigurationRepository } from "./ai-provider-configuration-repository.js";
-import type { CredentialVault } from "./credential-vault.js";
+import type { CredentialVault, CredentialVaultError } from "./credential-vault.js";
 import {
   executeExternalOperation,
   type ExternalServiceError,
@@ -59,6 +59,7 @@ export interface OpenAiAiProviderAdapterOptions {
 
 const providerId = "openai";
 const apiKeyFieldId = "api_key";
+const credentialVaultReadOperationName = "openai.credential_vault.read";
 const schemaValidator = new Ajv({ allErrors: false });
 const operationDefaults: ExternalServicePolicy = {
   timeoutMs: 15_000,
@@ -135,6 +136,20 @@ const requiredCapabilitiesForWebSearch = (
 
 const mapConfigurationError = (operationName: string): ExternalPortError =>
   new ExternalPortError(operationName, "PermanentFailure");
+
+const mapCredentialVaultReadError = (error: CredentialVaultError): PortError => {
+  if (
+    error.type === "CredentialNotFound" ||
+    error.type === "CredentialReferenceMismatch"
+  ) {
+    return new AiCredentialUnavailableError(providerId, apiKeyFieldId);
+  }
+
+  return new ExternalPortError(
+    credentialVaultReadOperationName,
+    "PermanentFailure",
+  );
+};
 
 const mapExternalError = (
   provider: string,
@@ -221,7 +236,7 @@ const resolveStoredApiKey = async (
 
   return secret.ok
     ? ok(secret.value)
-    : err(new AiCredentialUnavailableError(providerId, apiKeyFieldId));
+    : err(mapCredentialVaultReadError(secret.error));
 };
 
 const credentialValue = (
