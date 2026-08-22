@@ -167,7 +167,7 @@ const createAdapter = async (options: {
       return client;
     },
     externalServicePolicy: {
-      timeoutMs: 1000,
+      timeoutMs: options.externalTimeoutMs ?? 1000,
       maxAttempts: 1,
       retryDelayMs: 0,
     },
@@ -424,10 +424,13 @@ describe("OpenAI AI provider adapter", () => {
       await new Promise(() => undefined);
     };
     const { adapter } = await createAdapter({ client, externalTimeoutMs: 1 });
+    const startedAt = performance.now();
 
     const result = await adapter.listAccessibleModels({ providerId: "openai" });
+    const elapsedMs = performance.now() - startedAt;
 
     expect(isErr(result)).toBe(true);
+    expect(elapsedMs).toBeLessThan(100);
     if (isErr(result)) {
       expect(result.error).toBeInstanceOf(PortLimitExceededError);
       expect(result.error.limitName).toBe("timeoutMs");
