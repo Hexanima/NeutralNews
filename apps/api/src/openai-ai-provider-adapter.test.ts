@@ -251,6 +251,7 @@ describe("OpenAI AI provider adapter", () => {
               { type: "url", url: "https://example.com/fuente" },
               { type: "url", url: "http://sub.example.com/fuente" },
               { type: "url", url: "https://example.org/fuera" },
+              { type: "url", url: "https://blocked.example/fuente" },
               { type: "url", url: "javascript:alert(1)" },
               { type: "url", url: "mailto:test@example.com" },
             ],
@@ -264,7 +265,8 @@ describe("OpenAI AI provider adapter", () => {
       selection: { providerId: "openai", modelId: "gpt-5.6-terra" },
       requiredCapabilities: ["web_search"],
       query: "presupuesto nacional",
-      allowedDomains: ["example.com"],
+      allowedDomains: ["example.com", "blocked.example"],
+      blockedDomains: ["blocked.example"],
     });
 
     expect(isOk(result)).toBe(true);
@@ -291,6 +293,24 @@ describe("OpenAI AI provider adapter", () => {
     }
   });
 
+  it("rejects blocked-only web search domains before calling OpenAI", async () => {
+    const client = createFakeClient();
+    const { adapter } = await createAdapter({ client });
+
+    const result = await adapter.searchWeb({
+      selection: { providerId: "openai", modelId: "gpt-5.6-terra" },
+      requiredCapabilities: ["web_search"],
+      query: "presupuesto nacional",
+      blockedDomains: ["example.com"],
+    });
+
+    expect(isErr(result)).toBe(true);
+    expect(client.responses.calls).toHaveLength(0);
+    if (isErr(result)) {
+      expect(result.error).toBeInstanceOf(ExternalPortError);
+      expect(JSON.stringify(result.error)).not.toContain("presupuesto nacional");
+    }
+  });
   it("rejects missing web search capability before calling OpenAI", async () => {
     const client = createFakeClient();
     const models: readonly AiModelDefinition[] = initialAiProviderCatalogSnapshot.models.map((model) =>
@@ -475,6 +495,33 @@ describe("OpenAI AI provider adapter", () => {
     }
   });
 
+  it("rejects structured output that does not match the requested schema", async () => {
+    const client = createFakeClient();
+    client.responses.createResult = {
+      status: "completed",
+      output_text: JSON.stringify({ other: "ok" }),
+    };
+    const { adapter } = await createAdapter({ client });
+
+    const result = await adapter.generateStructuredResponse({
+      selection: { providerId: "openai", modelId: "gpt-5.6-terra" },
+      requiredCapabilities: ["structured_outputs"],
+      prompt: "Generar resumen",
+      outputSchema: {
+        type: "object",
+        required: ["summary"],
+        properties: { summary: { type: "string" } },
+        additionalProperties: false,
+      },
+    });
+
+    expect(isErr(result)).toBe(true);
+    if (isErr(result)) {
+      expect(result.error).toBeInstanceOf(AiInvalidStructuredOutputError);
+      expect(JSON.stringify(result.error)).not.toContain("Generar resumen");
+      expect(JSON.stringify(result.error)).not.toContain("other");
+    }
+  });
   it("normalizes non-completed structured Responses before parsing output", async () => {
     const cases: readonly {
       status: string;

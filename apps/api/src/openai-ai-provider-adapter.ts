@@ -1,3 +1,4 @@
+import Ajv from "ajv";
 import OpenAI from "openai";
 import {
   AiCredentialUnavailableError,
@@ -58,6 +59,7 @@ export interface OpenAiAiProviderAdapterOptions {
 
 const providerId = "openai";
 const apiKeyFieldId = "api_key";
+const schemaValidator = new Ajv({ allErrors: false });
 const operationDefaults: ExternalServicePolicy = {
   timeoutMs: 15_000,
   maxAttempts: 3,
@@ -228,6 +230,19 @@ const credentialValue = (
 ): string | null =>
   values.find((value) => value.fieldId === fieldId)?.value.trim() || null;
 
+const validateStructuredOutput = (
+  output: JsonValue,
+  outputSchema: JsonValue,
+): boolean => {
+  try {
+    const validate = schemaValidator.compile(outputSchema as object);
+
+    return validate(output) === true;
+  } catch {
+    return false;
+  }
+};
+
 const parseStructuredOutput = (
   response: unknown,
 ): Result<JsonValue, AiInvalidStructuredOutputError> => {
@@ -264,6 +279,36 @@ const containsModelRefusal = (value: unknown): boolean => {
   return Object.values(value).some(containsModelRefusal);
 };
 
+const normalizeDomains = (domains: readonly string[] = []): string[] =>
+  Array.from(
+    new Set(
+      domains
+        .map((domain) => domain.trim().toLowerCase())
+        .filter((domain) => domain.length > 0),
+    ),
+  );
+
+const domainsOverlap = (left: string, right: string): boolean =>
+  left === right || left.endsWith(`.${right}`) || right.endsWith(`.${left}`);
+
+const hasUnenforceableBlockedDomains = (
+  allowedDomains: readonly string[] | undefined,
+  blockedDomains: readonly string[] | undefined,
+): boolean =>
+  normalizeDomains(blockedDomains).length > 0 && normalizeDomains(allowedDomains).length === 0;
+
+const effectiveAllowedDomains = (
+  allowedDomains: readonly string[] | undefined,
+  blockedDomains: readonly string[] | undefined,
+): string[] => {
+  const allowed = normalizeDomains(allowedDomains);
+  const blocked = normalizeDomains(blockedDomains);
+
+  return allowed.filter(
+    (allowedDomain) => !blocked.some((blockedDomain) => domainsOverlap(allowedDomain, blockedDomain)),
+  );
+};
+
 const normalizeResponseState = (
   response: unknown,
   operationName: string,
@@ -290,8 +335,8 @@ const collectCitations = (
   allowedDomains: readonly string[] = [],
 ): { url: ArticleUrl; title?: string | undefined }[] => {
   const citations = new Map<string, { url: ArticleUrl; title?: string | undefined }>();
-  const blocked = new Set(blockedDomains.map((domain) => domain.toLowerCase()));
-  const allowed = new Set(allowedDomains.map((domain) => domain.toLowerCase()));
+  const blocked = new Set(normalizeDomains(blockedDomains));
+  const allowed = new Set(normalizeDomains(allowedDomains));
 
   const isBlocked = (rawUrl: string): boolean => {
     try {
@@ -570,6 +615,10 @@ export const createOpenAiAiProviderAdapter = ({
         return output;
       }
 
+      if (!validateStructuredOutput(output.value, input.outputSchema)) {
+        return err(new AiInvalidStructuredOutputError(providerId));
+      }
+
       const result: AiGenerationResult = {
         output: output.value,
         citations: collectCitations(response.value),
@@ -591,6 +640,16 @@ export const createOpenAiAiProviderAdapter = ({
         return resolved;
       }
 
+      if (hasUnenforceableBlockedDomains(input.allowedDomains, input.blockedDomains)) {
+        return err(new ExternalPortError(operationName, "PermanentFailure"));
+      }
+
+      const allowedDomains = effectiveAllowedDomains(input.allowedDomains, input.blockedDomains);
+
+      if (input.allowedDomains !== undefined && input.allowedDomains.length > 0 && allowedDomains.length === 0) {
+        return err(new ExternalPortError(operationName, "PermanentFailure"));
+      }
+
       const response = await withExternalOperation({
         operationName,
         idempotent: false,
@@ -608,9 +667,9 @@ export const createOpenAiAiProviderAdapter = ({
               tools: [
                 {
                   type: "web_search",
-                  ...(input.allowedDomains === undefined
+                  ...(allowedDomains.length === 0
                     ? {}
-                    : { filters: { allowed_domains: input.allowedDomains } }),
+                    : { filters: { allowed_domains: allowedDomains } }),
                 },
               ],
             },

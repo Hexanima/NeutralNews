@@ -16,6 +16,7 @@
     "vitest": "^3.2.4"
   },
   "dependencies": {
+    "ajv": "^6.12.6",
     "app-domain": "workspace:^",
     "openai": "^7.5.0"
   }

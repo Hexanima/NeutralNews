@@ -1385,6 +1385,18 @@ __metadata:
   languageName: node
   linkType: hard
 
+"ajv@npm:^6.12.6":
+  version: 6.15.0
+  resolution: "ajv@npm:6.15.0"
+  dependencies:
+    fast-deep-equal: "npm:^3.1.1"
+    fast-json-stable-stringify: "npm:^2.0.0"
+    json-schema-traverse: "npm:^0.4.1"
+    uri-js: "npm:^4.2.2"
+  checksum: 10c0/67966499dd272ecde1c2e467084411132891523d057487587879d39ac04207f4351b7b2324c83198013967fbfa632c1612adc960114a30770fbe07a0773b32c2
+  languageName: node
+  linkType: hard
+
 "ansi-regex@npm:^5.0.1":
   version: 5.0.1
   resolution: "ansi-regex@npm:5.0.1"
@@ -1420,6 +1432,7 @@ __metadata:
   resolution: "api@workspace:apps/api"
   dependencies:
     "@types/node": "npm:^24.6.0"
+    ajv: "npm:^6.12.6"
     app-domain: "workspace:^"
     openai: "npm:^7.5.0"
     tsx: "npm:^4.20.6"
