@@ -38,7 +38,7 @@ const parseArgon2idHash = (encodedHash: string): Argon2idHash | null => {
     !Number.isSafeInteger(parsedMemory) ||
     !Number.isSafeInteger(parsedPasses) ||
     !Number.isSafeInteger(parsedParallelism) ||
-    parsedParallelism < 2 ||
+    parsedParallelism < 1 ||
     parsedPasses < 2 ||
     parsedMemory < 8 * parsedParallelism ||
     parsedSalt.byteLength < 8 ||

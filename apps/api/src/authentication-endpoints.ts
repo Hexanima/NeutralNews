@@ -53,8 +53,25 @@ const readPassword = async (request: IncomingMessage): Promise<string | null> =>
   }
 };
 
-const isSecureRequest = (request: IncomingMessage): boolean =>
-  "encrypted" in request.socket && request.socket.encrypted === true;
+const firstHeaderValue = (
+  value: string | string[] | undefined,
+): string | undefined =>
+  Array.isArray(value) ? value[0] : value;
+
+const isSecureRequest = (request: IncomingMessage): boolean => {
+  if ("encrypted" in request.socket && request.socket.encrypted === true) {
+    return true;
+  }
+
+  const forwardedProtocol = firstHeaderValue(
+    request.headers["x-forwarded-proto"],
+  )
+    ?.split(",")[0]
+    ?.trim()
+    .toLowerCase();
+
+  return forwardedProtocol === "https";
+};
 
 export const handleAuthenticationRequest = async (
   request: IncomingMessage,

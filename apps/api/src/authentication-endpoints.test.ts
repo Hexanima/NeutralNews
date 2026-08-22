@@ -68,6 +68,64 @@ describe("authentication HTTP endpoints", () => {
     );
   });
 
+  it("sets Secure when the request was forwarded from HTTPS", async () => {
+    const response = await fetchFromApp("/api/auth/login", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-forwarded-proto": "https",
+      },
+      body: JSON.stringify({ password }),
+    });
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("set-cookie")).toMatch(
+      /^neutralnews_session=[^;]+; Path=\/; HttpOnly; SameSite=Lax; Secure; Max-Age=604800$/,
+    );
+  });
+
+  it("uses the first forwarded protocol value", async () => {
+    const response = await fetchFromApp("/api/auth/login", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-forwarded-proto": "https,http",
+      },
+      body: JSON.stringify({ password }),
+    });
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("set-cookie")).toContain("; Secure;");
+  });
+
+  it("does not set Secure when the request was forwarded from HTTP", async () => {
+    const response = await fetchFromApp("/api/auth/login", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-forwarded-proto": "http",
+      },
+      body: JSON.stringify({ password }),
+    });
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("set-cookie")).toMatch(
+      /^neutralnews_session=[^;]+; Path=\/; HttpOnly; SameSite=Lax; Max-Age=604800$/,
+    );
+  });
+
+  it("expires logout cookies as Secure when the request was forwarded from HTTPS", async () => {
+    const response = await fetchFromApp("/api/auth/logout", {
+      method: "POST",
+      headers: { "x-forwarded-proto": "https" },
+    });
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("set-cookie")).toBe(
+      "neutralnews_session=; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=0",
+    );
+  });
+
   it("returns the same generic response for invalid credentials", async () => {
     const response = await fetchFromApp("/api/auth/login", {
       method: "POST",

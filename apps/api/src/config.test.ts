@@ -17,6 +17,8 @@ const validPasswordHash =
   "$argon2id$v=19$m=32,t=2,p=2$MDEyMzQ1Njc4OWFiY2RlZg==$DFYj7N4xFFUiI8oxwK/k/skRZiCNIGR5xOGTpdhlPKs=";
 const validArgon2Hash =
   "$argon2id$v=19$m=65536,t=3,p=4$c29tZXNhbHQ$MTIzNDU2Nzg5MGFiY2RlZg";
+const validParallelismOneArgon2Hash =
+  "$argon2id$v=19$m=32,t=2,p=1$MDEyMzQ1Njc4OWFiY2RlZg==$3tvCwdd7MUuB81rsi89hLiVmvfk5BcFxVCAxjSr0ZgA=";
 const validSessionSecret = "0123456789abcdef0123456789abcdef";
 
 const createDataDirectory = async () => {
@@ -206,6 +208,16 @@ describe("api configuration", () => {
     });
 
     expect(loadApiConfig(environment).accessPasswordHash).toBe(validArgon2Hash);
+  });
+
+  it("accepts a valid Argon2id access password hash with parallelism one", async () => {
+    const environment = await createValidEnvironment({
+      NEUTRALNEWS_ACCESS_PASSWORD_HASH: validParallelismOneArgon2Hash,
+    });
+
+    expect(loadApiConfig(environment).accessPasswordHash).toBe(
+      validParallelismOneArgon2Hash,
+    );
   });
 
   it.each([
