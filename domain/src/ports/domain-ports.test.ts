@@ -8,6 +8,7 @@ import {
   isOk,
   ok,
   type AiCapability,
+  type AiCredentialFieldValue,
   type Article,
   type ArticleUrl,
   type ContextResult,

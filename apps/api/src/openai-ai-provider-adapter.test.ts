@@ -249,7 +249,8 @@ describe("OpenAI AI provider adapter", () => {
             type: "search",
             sources: [
               { type: "url", url: "https://example.com/fuente" },
-              { type: "url", url: "http://example.org/fuente" },
+              { type: "url", url: "http://sub.example.com/fuente" },
+              { type: "url", url: "https://example.org/fuera" },
               { type: "url", url: "javascript:alert(1)" },
               { type: "url", url: "mailto:test@example.com" },
             ],
@@ -284,7 +285,7 @@ describe("OpenAI AI provider adapter", () => {
       expect(result.value.text).toBe("Resultado con fuentes");
       expect(result.value.citations).toEqual([
         { url: "https://example.com/fuente" },
-        { url: "http://example.org/fuente" },
+        { url: "http://sub.example.com/fuente" },
       ]);
       expect(result.value.usage.webSearchCalls).toBe(1);
     }

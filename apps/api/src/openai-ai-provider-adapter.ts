@@ -287,9 +287,11 @@ const normalizeResponseState = (
 const collectCitations = (
   value: unknown,
   blockedDomains: readonly string[] = [],
+  allowedDomains: readonly string[] = [],
 ): { url: ArticleUrl; title?: string | undefined }[] => {
   const citations = new Map<string, { url: ArticleUrl; title?: string | undefined }>();
   const blocked = new Set(blockedDomains.map((domain) => domain.toLowerCase()));
+  const allowed = new Set(allowedDomains.map((domain) => domain.toLowerCase()));
 
   const isBlocked = (rawUrl: string): boolean => {
     try {
@@ -300,10 +302,14 @@ const collectCitations = (
       }
 
       const hostname = parsed.hostname.toLowerCase();
+      const matchesDomain = (domain: string): boolean =>
+        hostname === domain || hostname.endsWith(`.${domain}`);
 
-      return [...blocked].some(
-        (domain) => hostname === domain || hostname.endsWith(`.${domain}`),
-      );
+      if (allowed.size > 0 && ![...allowed].some(matchesDomain)) {
+        return true;
+      }
+
+      return [...blocked].some(matchesDomain);
     } catch {
       return true;
     }
@@ -628,7 +634,11 @@ export const createOpenAiAiProviderAdapter = ({
 
       const result: AiWebSearchResult = {
         text: getString(response.value, "output_text") ?? "",
-        citations: collectCitations(response.value, input.blockedDomains),
+        citations: collectCitations(
+          response.value,
+          input.blockedDomains,
+          input.allowedDomains,
+        ),
         usage: usageFromResponse(response.value),
       };
 
