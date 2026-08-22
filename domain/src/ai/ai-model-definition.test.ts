@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   AiCapabilityUnavailableError,
+  AiModelIncompatibleError,
   AiModelNotFoundError,
   AiProviderNotFoundError,
   isErr,
@@ -32,6 +33,7 @@ const model: AiModelDefinition = {
   modelId: "gpt-5-mini",
   remoteModelId: "gpt-5-mini",
   capabilities: ["structured_outputs", "web_search", "reasoning_medium"],
+  compatibilityStatus: "compatible",
 };
 
 describe("AI model definitions", () => {
@@ -59,6 +61,7 @@ describe("AI model definitions", () => {
     expect(model.capabilities).toContain("structured_outputs");
     expect(model.capabilities).toContain("web_search");
     expect(model.capabilities).toContain("reasoning_medium");
+    expect(model.compatibilityStatus).toBe("compatible");
     expect(selection).toEqual({ providerId: "openai", modelId: "gpt-5-mini" });
   });
 
@@ -74,6 +77,34 @@ describe("AI model definitions", () => {
     if (isOk(result)) {
       expect(result.value.provider).toBe(provider);
       expect(result.value.model).toBe(model);
+    }
+  });
+
+  it("rejects a selected model that has unknown compatibility", () => {
+    const result = validateAiModelSelection({
+      providers: [provider],
+      models: [{ ...model, compatibilityStatus: "unknown" }],
+      selection: { providerId: "openai", modelId: "gpt-5-mini" },
+      requiredCapabilities: ["structured_outputs", "web_search"],
+    });
+
+    expect(isErr(result)).toBe(true);
+    if (isErr(result)) {
+      expect(result.error).toBeInstanceOf(AiModelIncompatibleError);
+    }
+  });
+
+  it("rejects a selected model that is marked incompatible", () => {
+    const result = validateAiModelSelection({
+      providers: [provider],
+      models: [{ ...model, compatibilityStatus: "incompatible" }],
+      selection: { providerId: "openai", modelId: "gpt-5-mini" },
+      requiredCapabilities: ["structured_outputs", "web_search"],
+    });
+
+    expect(isErr(result)).toBe(true);
+    if (isErr(result)) {
+      expect(result.error).toBeInstanceOf(AiModelIncompatibleError);
     }
   });
 
