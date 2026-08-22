@@ -162,6 +162,43 @@ export const parseSession = ({
   return { issuedAt: parsedIssuedAt, expiresAt: parsedExpiresAt };
 };
 
+const parseCookies = (cookieHeader: string): Map<string, string> => {
+  const cookies = new Map<string, string>();
+
+  for (const cookie of cookieHeader.split(";")) {
+    const separatorIndex = cookie.indexOf("=");
+
+    if (separatorIndex === -1) {
+      continue;
+    }
+
+    cookies.set(
+      cookie.slice(0, separatorIndex).trim(),
+      cookie.slice(separatorIndex + 1).trim(),
+    );
+  }
+
+  return cookies;
+};
+
+export const hasValidSessionCookie = ({
+  cookieHeader,
+  secret,
+  now = new Date(),
+}: {
+  cookieHeader: string | undefined;
+  secret: string;
+  now?: Date;
+}): boolean => {
+  if (cookieHeader === undefined) {
+    return false;
+  }
+
+  const token = parseCookies(cookieHeader).get(cookieName);
+
+  return token !== undefined && parseSession({ token, secret, now }) !== null;
+};
+
 const cookieAttributes = (secure: boolean): string =>
   `Path=/; HttpOnly; SameSite=Lax${secure ? "; Secure" : ""}`;
 

@@ -11,6 +11,7 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createApp, loadApiConfig } from "./app.js";
+import { createSession } from "./authentication.js";
 
 const temporaryDirectories: string[] = [];
 const validPasswordHash =
@@ -56,6 +57,10 @@ const createValidEnvironment = async (): Promise<NodeJS.ProcessEnv> => ({
   NEUTRALNEWS_DATA_DIR: await createTemporaryDirectory("neutralnews-data-"),
 });
 
+const createSessionHeader = () => ({
+  cookie: `neutralnews_session=${createSession({ secret: validSessionSecret })}`,
+});
+
 const fetchFromApp = async (
   path: string,
   environment: NodeJS.ProcessEnv,
@@ -82,8 +87,12 @@ const fetchFromApp = async (
       ...init,
       headers:
         init?.json === undefined
-          ? init?.headers
-          : { "content-type": "application/json", ...init.headers },
+          ? { ...createSessionHeader(), ...init?.headers }
+          : {
+              ...createSessionHeader(),
+              "content-type": "application/json",
+              ...init.headers,
+            },
       body: init?.json === undefined ? init?.body : JSON.stringify(init.json),
     });
   } finally {

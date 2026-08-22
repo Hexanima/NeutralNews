@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { ApiConfig } from "./config.js";
 import {
   createSession,
+  hasValidSessionCookie,
   serializeExpiredSessionCookie,
   serializeSessionCookie,
   verifyPassword,
@@ -95,5 +96,28 @@ export const handleAuthenticationRequest = async (
     "set-cookie": serializeSessionCookie({ token, secure }),
   });
   response.end();
+  return true;
+};
+
+export const handleSessionGuard = (
+  request: IncomingMessage,
+  response: ServerResponse,
+  config?: ApiConfig,
+): boolean => {
+  if (config === undefined) {
+    sendJson(response, 500, { error: "InternalServerError" });
+    return true;
+  }
+
+  if (
+    hasValidSessionCookie({
+      cookieHeader: request.headers.cookie,
+      secret: config.sessionSecret,
+    })
+  ) {
+    return false;
+  }
+
+  sendJson(response, 401, { error: "Unauthorized" });
   return true;
 };

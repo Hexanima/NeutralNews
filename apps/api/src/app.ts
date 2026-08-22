@@ -21,7 +21,10 @@ import {
   loadRuntimeEnvironment,
   type ApiConfig,
 } from "./config.js";
-import { handleAuthenticationRequest } from "./authentication-endpoints.js";
+import {
+  handleAuthenticationRequest,
+  handleSessionGuard,
+} from "./authentication-endpoints.js";
 import {
   handleConfigurationRequest,
   type ConfigurationRequestOptions,
@@ -283,6 +286,10 @@ export const requestHandler = async (
   if (
     await handleAuthenticationRequest(request, response, options.config)
   ) {
+    return;
+  }
+
+  if (handleSessionGuard(request, response, options.config)) {
     return;
   }
 
