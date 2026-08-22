@@ -137,7 +137,7 @@ export const createJsonAiProviderConfigurationRepository = (
 
     if (!readResult.ok) {
       if (readResult.error instanceof CorruptJsonError) {
-        const defaultSnapshot = createDefaultAiProviderConfigurationSnapshot();
+        const defaultSnapshot = createDefaultAiProviderConfigurationSnapshot(catalogSnapshot);
         const writeResult = await writeSnapshot(defaultSnapshot);
 
         return writeResult.ok ? ok(defaultSnapshot) : writeResult;
@@ -147,7 +147,7 @@ export const createJsonAiProviderConfigurationRepository = (
     }
 
     if (readResult.value === null) {
-      const defaultSnapshot = createDefaultAiProviderConfigurationSnapshot();
+      const defaultSnapshot = createDefaultAiProviderConfigurationSnapshot(catalogSnapshot);
       const writeResult = await writeSnapshot(defaultSnapshot);
 
       return writeResult.ok ? ok(defaultSnapshot) : writeResult;
@@ -156,7 +156,7 @@ export const createJsonAiProviderConfigurationRepository = (
     const snapshot = createAiProviderConfigurationSnapshot(readResult.value);
 
     if (!snapshot.ok) {
-      const defaultSnapshot = createDefaultAiProviderConfigurationSnapshot();
+      const defaultSnapshot = createDefaultAiProviderConfigurationSnapshot(catalogSnapshot);
       const writeResult = await writeSnapshot(defaultSnapshot);
 
       return writeResult.ok ? ok(defaultSnapshot) : writeResult;
@@ -188,7 +188,16 @@ export const createJsonAiProviderConfigurationRepository = (
       return snapshot;
     }
 
-    return effectiveFromSnapshot(snapshot.value);
+    const effective = effectiveFromSnapshot(snapshot.value);
+
+    if (effective.ok) {
+      return effective;
+    }
+
+    const defaultSnapshot = createDefaultAiProviderConfigurationSnapshot(catalogSnapshot);
+    const writeResult = await writeSnapshot(defaultSnapshot);
+
+    return writeResult.ok ? effectiveFromSnapshot(defaultSnapshot) : writeResult;
   };
 
   const saveMutatedSnapshot = async (

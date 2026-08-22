@@ -63,6 +63,18 @@ export class AiModelNotFoundError extends TaggedError<"AiModelNotFound"> {
   }
 }
 
+export class AiModelIncompatibleError extends TaggedError<"AiModelIncompatible"> {
+  public readonly type = "AiModelIncompatible";
+
+  constructor(
+    public readonly providerId: string,
+    public readonly modelId: string,
+  ) {
+    super("AiModelIncompatible");
+    this.message = `${providerId}/${modelId} is marked as incompatible`;
+  }
+}
+
 export class AiCapabilityUnavailableError extends TaggedError<"AiCapabilityUnavailable"> {
   public readonly type = "AiCapabilityUnavailable";
 
@@ -79,6 +91,7 @@ export class AiCapabilityUnavailableError extends TaggedError<"AiCapabilityUnava
 export type AiModelSelectionError =
   | AiProviderNotFoundError
   | AiModelNotFoundError
+  | AiModelIncompatibleError
   | AiCapabilityUnavailableError;
 
 export interface ValidateAiModelSelectionInput {
@@ -142,6 +155,12 @@ export const validateAiModelSelection = ({
   if (model === undefined) {
     return err(
       new AiModelNotFoundError(selection.providerId, selection.modelId),
+    );
+  }
+
+  if (model.compatibilityStatus === "incompatible") {
+    return err(
+      new AiModelIncompatibleError(selection.providerId, selection.modelId),
     );
   }
 

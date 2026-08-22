@@ -165,6 +165,47 @@ describe("JSON AI provider configuration repository", () => {
     });
   });
 
+
+  it("recovers defaults when the stored selection no longer matches the current catalog", async () => {
+    const directory = await createTemporaryDirectory();
+    await mkdir(join(directory, "configuration"));
+    await writeFile(
+      join(directory, configPath),
+      `${JSON.stringify({
+        schemaVersion: 1,
+        configurationVersion: 7,
+        activeSelection: { providerId: "openai", modelId: "gpt-5.6-sol" },
+        credentialReferences: [],
+        providerOverrides: [],
+        modelOverrides: [],
+      })}\n`,
+    );
+    const catalogSnapshot = {
+      ...initialAiProviderCatalogSnapshot,
+      models: [initialAiProviderCatalogSnapshot.models[0]!],
+    };
+    const repository = createJsonAiProviderConfigurationRepository(directory, {
+      catalogSnapshot,
+    });
+
+    const result = await repository.getEffectiveConfiguration();
+
+    expect(result.ok).toBe(true);
+    if (!isOk(result)) {
+      throw result.error;
+    }
+
+    expect(result.value.configurationVersion).toBe(1);
+    expect(result.value.activeSelection).toEqual({
+      providerId: "openai",
+      modelId: "gpt-5.6-terra",
+    });
+    expect(await readStoredConfiguration(directory)).toMatchObject({
+      schemaVersion: 1,
+      configurationVersion: 1,
+      activeSelection: { providerId: "openai", modelId: "gpt-5.6-terra" },
+    });
+  });
   it("recovers defaults when the local JSON is corrupt and keeps a recoverable copy", async () => {
     const directory = await createTemporaryDirectory();
     await mkdir(join(directory, "configuration"));

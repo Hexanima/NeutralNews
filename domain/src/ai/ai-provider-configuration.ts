@@ -5,12 +5,12 @@ import type {
   AiModelSelection,
   AiProviderDefinition,
 } from "./ai-model-definition.js";
+import { validateAiModelSelection } from "./ai-model-definition.js";
 import {
   createAiProviderCatalog,
   type AiProviderCatalogSnapshot,
   type InvalidAiProviderCatalogError,
 } from "./ai-provider-catalog.js";
-import { initialAiProviderCatalogSnapshot } from "./initial-ai-provider-catalog.js";
 
 export const aiProviderConfigurationSchemaVersion = 1;
 export const initialAiProviderConfigurationVersion = 1;
@@ -124,21 +124,6 @@ const createCredentialReference = (
   });
 };
 
-const defaultCatalogWithOverrides = (snapshot: {
-  readonly providerOverrides: readonly AiProviderDefinition[];
-  readonly modelOverrides: readonly AiModelDefinition[];
-}): AiProviderCatalogSnapshot => ({
-  schemaVersion: initialAiProviderCatalogSnapshot.schemaVersion,
-  providers: mergeProviders(
-    initialAiProviderCatalogSnapshot.providers,
-    snapshot.providerOverrides,
-  ),
-  models: mergeModels(
-    initialAiProviderCatalogSnapshot.models,
-    snapshot.modelOverrides,
-  ),
-});
-
 const mergeProviders = (
   providers: readonly AiProviderDefinition[],
   overrides: readonly AiProviderDefinition[],
@@ -170,36 +155,66 @@ const mergeModels = (
   ];
 };
 
-const findSelectedModel = (
-  models: readonly AiModelDefinition[],
-  selection: AiModelSelection,
-): AiModelDefinition | undefined =>
-  models.find(
-    (model) =>
-      model.providerId === selection.providerId &&
-      model.modelId === selection.modelId,
+const catalogForOverrideValidation = (
+  providerOverrides: readonly AiProviderDefinition[],
+  modelOverrides: readonly AiModelDefinition[],
+): AiProviderCatalogSnapshot => {
+  const providersById = new Map(
+    providerOverrides.map((provider) => [provider.id, provider]),
   );
 
-const validateSelection = (
-  catalogSnapshot: AiProviderCatalogSnapshot,
+  for (const model of modelOverrides) {
+    if (!providersById.has(model.providerId)) {
+      providersById.set(model.providerId, {
+        id: model.providerId,
+        name: model.providerId,
+        credentialSchema: { fields: [] },
+      });
+    }
+  }
+
+  return {
+    schemaVersion: 1,
+    providers: [...providersById.values()],
+    models: modelOverrides,
+  };
+};
+
+const toSelectionError = (errorType: string, selection: AiModelSelection) =>
+  invalidValue(
+    errorType === "AiModelIncompatible" ? "compatibilityStatus" : "activeSelection",
+    selection,
+  );
+
+const validateEffectiveSelection = (
+  providers: readonly AiProviderDefinition[],
+  models: readonly AiModelDefinition[],
   selection: AiModelSelection,
 ): InvalidAiProviderConfigurationValueError | null => {
+  const result = validateAiModelSelection({
+    providers,
+    models,
+    selection,
+    requiredCapabilities: [],
+  });
+
+  return result.ok ? null : toSelectionError(result.error.type, selection);
+};
+
+const defaultSelectionFromCatalog = (
+  catalogSnapshot: AiProviderCatalogSnapshot,
+): AiModelSelection => {
   const catalog = createAiProviderCatalog(catalogSnapshot);
+  const model = catalog.ok
+    ? catalog.value.models.find(
+        (candidate) => candidate.compatibilityStatus === "compatible",
+      )
+    : undefined;
 
-  if (!catalog.ok) {
-    return invalidValue("activeSelection", selection);
-  }
-
-  const model = findSelectedModel(catalog.value.models, selection);
-
-  if (model === undefined || model.compatibilityStatus === "incompatible") {
-    return invalidValue(
-      model === undefined ? "activeSelection" : "compatibilityStatus",
-      selection,
-    );
-  }
-
-  return null;
+  return {
+    providerId: model?.providerId ?? "",
+    modelId: model?.modelId ?? "",
+  };
 };
 
 export const createAiProviderConfigurationSnapshot = (
@@ -219,22 +234,17 @@ export const createAiProviderConfigurationSnapshot = (
     ? snapshot.credentialReferences.map(createCredentialReference)
     : undefined;
   const providerOverrides = Array.isArray(snapshot.providerOverrides)
-    ? snapshot.providerOverrides
+    ? (snapshot.providerOverrides as readonly AiProviderDefinition[])
     : undefined;
   const modelOverrides = Array.isArray(snapshot.modelOverrides)
-    ? snapshot.modelOverrides
+    ? (snapshot.modelOverrides as readonly AiModelDefinition[])
     : undefined;
-
-  const effectiveCatalog =
+  const overrideCatalog =
     providerOverrides !== undefined && modelOverrides !== undefined
       ? createAiProviderCatalog(
-          defaultCatalogWithOverrides({ providerOverrides, modelOverrides }),
+          catalogForOverrideValidation(providerOverrides, modelOverrides),
         )
       : undefined;
-  const selectionError =
-    activeSelection.ok && effectiveCatalog?.ok
-      ? validateSelection(effectiveCatalog.value, activeSelection.value)
-      : null;
 
   const errors = [
     ...(schemaVersion.ok && schemaVersion.value === aiProviderConfigurationSchemaVersion
@@ -251,8 +261,7 @@ export const createAiProviderConfigurationSnapshot = (
     ...(modelOverrides === undefined
       ? [invalidValue("modelOverrides", snapshot.modelOverrides)]
       : []),
-    ...(effectiveCatalog !== undefined && !effectiveCatalog.ok ? [effectiveCatalog.error] : []),
-    ...(selectionError === null ? [] : [selectionError]),
+    ...(overrideCatalog !== undefined && !overrideCatalog.ok ? [overrideCatalog.error] : []),
   ];
 
   if (errors.length > 0) {
@@ -266,7 +275,7 @@ export const createAiProviderConfigurationSnapshot = (
       : initialAiProviderConfigurationVersion,
     activeSelection: activeSelection.ok
       ? activeSelection.value
-      : { providerId: "openai", modelId: "gpt-5.6-terra" },
+      : { providerId: "", modelId: "" },
     credentialReferences:
       credentialReferences?.flatMap((reference) => (reference.ok ? [reference.value] : [])) ?? [],
     providerOverrides: providerOverrides ?? [],
@@ -274,21 +283,22 @@ export const createAiProviderConfigurationSnapshot = (
   });
 };
 
-export const createDefaultAiProviderConfigurationSnapshot =
-  (): AiProviderConfigurationSnapshot => ({
-    schemaVersion: aiProviderConfigurationSchemaVersion,
-    configurationVersion: initialAiProviderConfigurationVersion,
-    activeSelection: { providerId: "openai", modelId: "gpt-5.6-terra" },
-    credentialReferences: [],
-    providerOverrides: [],
-    modelOverrides: [],
-  });
+export const createDefaultAiProviderConfigurationSnapshot = (
+  catalogSnapshot: AiProviderCatalogSnapshot,
+): AiProviderConfigurationSnapshot => ({
+  schemaVersion: aiProviderConfigurationSchemaVersion,
+  configurationVersion: initialAiProviderConfigurationVersion,
+  activeSelection: defaultSelectionFromCatalog(catalogSnapshot),
+  credentialReferences: [],
+  providerOverrides: [],
+  modelOverrides: [],
+});
 
 export const createEffectiveAiProviderConfiguration = (
   catalogSnapshot: AiProviderCatalogSnapshot,
   localSnapshot: AiProviderConfigurationSnapshot | null,
 ): Result<EffectiveAiProviderConfiguration, InvalidAiProviderCatalogError | InvalidAiProviderConfigurationError> => {
-  const snapshot = localSnapshot ?? createDefaultAiProviderConfigurationSnapshot();
+  const snapshot = localSnapshot ?? createDefaultAiProviderConfigurationSnapshot(catalogSnapshot);
   const mergedCatalogSnapshot = {
     schemaVersion: catalogSnapshot.schemaVersion,
     providers: mergeProviders(catalogSnapshot.providers, snapshot.providerOverrides),
@@ -300,7 +310,11 @@ export const createEffectiveAiProviderConfiguration = (
     return catalog;
   }
 
-  const selectionError = validateSelection(catalog.value, snapshot.activeSelection);
+  const selectionError = validateEffectiveSelection(
+    catalog.value.providers,
+    catalog.value.models,
+    snapshot.activeSelection,
+  );
 
   if (selectionError !== null) {
     return err(new InvalidAiProviderConfigurationError([selectionError]));
