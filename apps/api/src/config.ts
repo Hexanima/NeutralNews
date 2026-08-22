@@ -21,6 +21,7 @@ export interface ApiConfig {
   aiProviderStatus: AiProviderStatus;
   externalServices: ExternalServiceConfig;
   trustedProxyAddresses: string[];
+  allowedOrigins: string[];
 }
 
 export interface ExternalServiceConfig {
@@ -375,6 +376,57 @@ const resolveTrustedProxyAddresses = (
   return addresses;
 };
 
+const resolveAllowedOrigins = (
+  environment: NodeJS.ProcessEnv,
+  host: string,
+  port: number,
+  issues: ConfigurationIssue[],
+): string[] => {
+  const rawOrigins = environment.NEUTRALNEWS_ALLOWED_ORIGINS?.trim();
+
+  if (rawOrigins === undefined || rawOrigins === "") {
+    if (host !== "127.0.0.1" && host !== "localhost") {
+      issues.push({
+        variable: "NEUTRALNEWS_ALLOWED_ORIGINS",
+        message: "is required when API_HOST is not loopback",
+      });
+      return [];
+    }
+
+    const webPort = environment.WEB_PORT?.trim() || "5173";
+
+    return [
+      `http://127.0.0.1:${port}`,
+      `http://localhost:${port}`,
+      `http://127.0.0.1:${webPort}`,
+      `http://localhost:${webPort}`,
+    ];
+  }
+
+  const origins = rawOrigins.split(",").map((origin) => origin.trim());
+
+  if (
+    origins.some((origin) => {
+      try {
+        const parsed = new URL(origin);
+        return (
+          (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+          parsed.origin !== origin
+        );
+      } catch {
+        return true;
+      }
+    })
+  ) {
+    issues.push({
+      variable: "NEUTRALNEWS_ALLOWED_ORIGINS",
+      message: "must contain exact HTTP or HTTPS origins",
+    });
+  }
+
+  return origins;
+};
+
 export const loadApiConfig = (
   environment: NodeJS.ProcessEnv = process.env,
 ): ApiConfig => {
@@ -392,6 +444,7 @@ export const loadApiConfig = (
     environment,
     issues,
   );
+  const allowedOrigins = resolveAllowedOrigins(environment, host, port, issues);
 
   if (issues.length > 0) {
     throw new ConfigurationError(issues);
@@ -405,6 +458,7 @@ export const loadApiConfig = (
     accessPasswordHash,
     sessionSecret,
     credentialVaultKey,
+    allowedOrigins,
     aiProviderStatus: "not_configured",
     externalServices,
     trustedProxyAddresses,

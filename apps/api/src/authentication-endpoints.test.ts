@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { createApp } from "./app.js";
 import { loadApiConfig } from "./config.js";
+import { createSession } from "./authentication.js";
 
 const password = "correct horse battery staple";
 const passwordHash =
@@ -61,6 +62,49 @@ afterEach(async () => {
 });
 
 describe("authentication HTTP endpoints", () => {
+  it("limits a sixth failed login attempt in the same app instance", async () => {
+    const server = createApp({
+      config: loadApiConfig(await createEnvironment()),
+    });
+
+    await new Promise<void>((resolve) => {
+      server.listen(0, "127.0.0.1", resolve);
+    });
+
+    const address = server.address() as AddressInfo;
+
+    try {
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        const response = await fetch(
+          `http://127.0.0.1:${address.port}/api/auth/login`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ password: "incorrect password" }),
+          },
+        );
+
+        expect(response.status).toBe(401);
+      }
+
+      const response = await fetch(
+        `http://127.0.0.1:${address.port}/api/auth/login`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ password: "incorrect password" }),
+        },
+      );
+
+      expect(response.status).toBe(429);
+      expect(response.headers.get("retry-after")).toBe("900");
+      expect(await response.json()).toEqual({ error: "TooManyRequests" });
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
   it("logs in and issues the required session cookie", async () => {
     const response = await fetchFromApp("/api/auth/login", {
       method: "POST",
@@ -153,7 +197,11 @@ describe("authentication HTTP endpoints", () => {
       "/api/auth/logout",
       {
         method: "POST",
-        headers: { "x-forwarded-proto": "https" },
+        headers: {
+          "x-forwarded-proto": "https",
+          cookie: `neutralnews_session=${createSession({ secret: sessionSecret })}`,
+          origin: "http://127.0.0.1:3000",
+        },
       },
       { NEUTRALNEWS_TRUSTED_PROXY_ADDRESSES: "127.0.0.1" },
     );
@@ -176,12 +224,10 @@ describe("authentication HTTP endpoints", () => {
     expect(response.headers.get("set-cookie")).toBeNull();
   });
 
-  it("logs out idempotently by expiring the session cookie", async () => {
+  it("requires a valid session for logout", async () => {
     const response = await fetchFromApp("/api/auth/logout", { method: "POST" });
 
-    expect(response.status).toBe(204);
-    expect(response.headers.get("set-cookie")).toBe(
-      "neutralnews_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0",
-    );
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: "Unauthorized" });
   });
 });

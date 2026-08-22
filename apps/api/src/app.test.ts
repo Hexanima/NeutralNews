@@ -147,6 +147,7 @@ describe("api app", () => {
       environment: await createValidEnvironment({
         API_HOST: "0.0.0.0",
         API_PORT: "4100",
+        NEUTRALNEWS_ALLOWED_ORIGINS: "http://127.0.0.1:4100",
       }),
     });
 
@@ -276,6 +277,35 @@ describe("api app", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("application/json");
+  });
+
+
+  it("rejects authenticated mutations without an origin", async () => {
+    const staticRoot = await createStaticRoot();
+    const environment = await createValidEnvironment();
+    const response = await fetchFromApp(
+      staticRoot,
+      "/api/configuration/regional-preferences",
+      environment,
+      {
+        method: "PUT",
+        headers: {
+          ...createSessionHeader(),
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          timeZone: { mode: "automatic" },
+          feedDistribution: {
+            argentina: 3,
+            latin_america: 2,
+            international: 1,
+          },
+        }),
+      },
+    );
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: "Forbidden" });
   });
 
   it("rejects requests with tampered sessions", async () => {
