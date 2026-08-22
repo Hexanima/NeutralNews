@@ -14,7 +14,7 @@ import {
 const temporaryDirectories: string[] = [];
 
 const validPasswordHash =
-  "$2b$12$C6UzMDM.H6dfI/f/IKcEeO7FDgWz8WUyZVJXl2DrT0S6QYzR2v9Da";
+  "$argon2id$v=19$m=32,t=2,p=2$MDEyMzQ1Njc4OWFiY2RlZg==$DFYj7N4xFFUiI8oxwK/k/skRZiCNIGR5xOGTpdhlPKs=";
 const validArgon2Hash =
   "$argon2id$v=19$m=65536,t=3,p=4$c29tZXNhbHQ$MTIzNDU2Nzg5MGFiY2RlZg";
 const validSessionSecret = "0123456789abcdef0123456789abcdef";
@@ -208,7 +208,14 @@ describe("api configuration", () => {
     expect(loadApiConfig(environment).accessPasswordHash).toBe(validArgon2Hash);
   });
 
-  it.each(["$argon2id$", "$argon2i$", "$argon2id$not-enough"])(
+  it.each([
+    "$2b$12$C6UzMDM.H6dfI/f/IKcEeO7FDgWz8WUyZVJXl2DrT0S6QYzR2v9Da",
+    "$argon2i$v=19$m=32,t=2,p=2$MDEyMzQ1Njc4OWFiY2RlZg==$DFYj7N4xFFUiI8oxwK/k/skRZiCNIGR5xOGTpdhlPKs=",
+    "$argon2d$v=19$m=32,t=2,p=2$MDEyMzQ1Njc4OWFiY2RlZg==$DFYj7N4xFFUiI8oxwK/k/skRZiCNIGR5xOGTpdhlPKs=",
+    "$argon2id$v=16$m=32,t=2,p=2$MDEyMzQ1Njc4OWFiY2RlZg==$DFYj7N4xFFUiI8oxwK/k/skRZiCNIGR5xOGTpdhlPKs=",
+    "$argon2id$",
+    "$argon2id$not-enough",
+  ])(
     "rejects malformed Argon2 access password hash %s",
     async (accessPasswordHash) => {
       const environment = await createValidEnvironment({

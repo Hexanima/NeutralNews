@@ -1,0 +1,99 @@
+import type { IncomingMessage, ServerResponse } from "node:http";
+
+import type { ApiConfig } from "./config.js";
+import {
+  createSession,
+  serializeExpiredSessionCookie,
+  serializeSessionCookie,
+  verifyPassword,
+} from "./authentication.js";
+
+const loginPath = "/api/auth/login";
+const logoutPath = "/api/auth/logout";
+const maxJsonBodyBytes = 64 * 1024;
+
+const sendJson = (
+  response: ServerResponse,
+  statusCode: number,
+  payload: unknown,
+) => {
+  response.writeHead(statusCode, { "content-type": "application/json" });
+  response.end(JSON.stringify(payload));
+};
+
+const readPassword = async (request: IncomingMessage): Promise<string | null> => {
+  let size = 0;
+  const chunks: Buffer[] = [];
+
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += buffer.byteLength;
+
+    if (size > maxJsonBodyBytes) {
+      return null;
+    }
+
+    chunks.push(buffer);
+  }
+
+  try {
+    const value: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+
+    return (
+      typeof value === "object" &&
+      value !== null &&
+      "password" in value &&
+      typeof value.password === "string"
+        ? value.password
+        : null
+    );
+  } catch {
+    return null;
+  }
+};
+
+const isSecureRequest = (request: IncomingMessage): boolean =>
+  "encrypted" in request.socket && request.socket.encrypted === true;
+
+export const handleAuthenticationRequest = async (
+  request: IncomingMessage,
+  response: ServerResponse,
+  config?: ApiConfig,
+): Promise<boolean> => {
+  const pathname = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
+  const secure = isSecureRequest(request);
+
+  if (pathname === logoutPath && request.method === "POST") {
+    response.writeHead(204, {
+      "set-cookie": serializeExpiredSessionCookie({ secure }),
+    });
+    response.end();
+    return true;
+  }
+
+  if (pathname !== loginPath || request.method !== "POST") {
+    return false;
+  }
+
+  if (config === undefined) {
+    sendJson(response, 500, { error: "InternalServerError" });
+    return true;
+  }
+
+  const password = await readPassword(request);
+  const authenticated =
+    password !== null &&
+    (await verifyPassword(password, config.accessPasswordHash));
+
+  if (!authenticated) {
+    sendJson(response, 401, { error: "Unauthorized" });
+    return true;
+  }
+
+  const token = createSession({ secret: config.sessionSecret });
+  response.writeHead(204, {
+    "set-cookie": serializeSessionCookie({ token, secure }),
+  });
+  response.end();
+  return true;
+};

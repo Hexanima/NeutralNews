@@ -21,6 +21,7 @@ import {
   loadRuntimeEnvironment,
   type ApiConfig,
 } from "./config.js";
+import { handleAuthenticationRequest } from "./authentication-endpoints.js";
 import {
   handleConfigurationRequest,
   type ConfigurationRequestOptions,
@@ -276,6 +277,12 @@ export const requestHandler = async (
       (() => createHealthResponse(options.config));
 
     sendJson(response, 200, await healthResponseFactory(context));
+    return;
+  }
+
+  if (
+    await handleAuthenticationRequest(request, response, options.config)
+  ) {
     return;
   }
 

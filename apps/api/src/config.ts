@@ -44,9 +44,8 @@ const defaultTimeZone = "America/Argentina/Buenos_Aires";
 const defaultExternalTimeoutMs = 15_000;
 const defaultExternalMaxAttempts = 3;
 const defaultExternalRetryDelayMs = 250;
-const bcryptHashPattern = /^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/;
 const argon2HashPattern =
-  /^\$argon2(?:id|i)\$v=\d+\$m=\d+,t=\d+,p=\d+\$[A-Za-z0-9+/]+={0,2}\$[A-Za-z0-9+/]+={0,2}$/;
+  /^\$argon2id\$v=19\$m=\d+,t=\d+,p=\d+\$[A-Za-z0-9+/]+={0,2}\$[A-Za-z0-9+/]+={0,2}$/;
 const minimumSessionSecretLength = 32;
 const defaultEnvironmentFilePath = fileURLToPath(
   new URL("../../../.env", import.meta.url),
@@ -288,13 +287,10 @@ const resolveAccessPasswordHash = (
     return "";
   }
 
-  if (
-    !bcryptHashPattern.test(accessPasswordHash) &&
-    !argon2HashPattern.test(accessPasswordHash)
-  ) {
+  if (!argon2HashPattern.test(accessPasswordHash)) {
     issues.push({
       variable: "NEUTRALNEWS_ACCESS_PASSWORD_HASH",
-      message: "must be a bcrypt or Argon2 hash",
+      message: "must be an Argon2id hash",
     });
   }
 
