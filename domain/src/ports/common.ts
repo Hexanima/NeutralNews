@@ -1,5 +1,10 @@
 import { TaggedError } from "../types/error.js";
-import type { AiCapabilityUnavailableError } from "../ai/index.js";
+import type {
+  AiCapabilityUnavailableError,
+  AiModelIncompatibleError,
+  AiModelNotFoundError,
+  AiProviderNotFoundError,
+} from "../ai/index.js";
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue =
@@ -67,8 +72,58 @@ export class ExternalPortError extends TaggedError<"ExternalPortError"> {
   }
 }
 
+export class AiCredentialUnavailableError extends TaggedError<"AiCredentialUnavailable"> {
+  public readonly type = "AiCredentialUnavailable";
+
+  constructor(
+    public readonly providerId: string,
+    public readonly fieldId: string,
+  ) {
+    super("AiCredentialUnavailable");
+    this.message = `${providerId}/${fieldId} credential is unavailable`;
+  }
+}
+
+export class AiProviderUnsupportedError extends TaggedError<"AiProviderUnsupported"> {
+  public readonly type = "AiProviderUnsupported";
+
+  constructor(public readonly providerId: string) {
+    super("AiProviderUnsupported");
+    this.message = `AI provider is unsupported: ${providerId}`;
+  }
+}
+
+export class AiProviderRejectedError extends TaggedError<"AiProviderRejected"> {
+  public readonly type = "AiProviderRejected";
+
+  constructor(
+    public readonly providerId: string,
+    public readonly operationName: string,
+    public readonly statusCode?: number | undefined,
+  ) {
+    super("AiProviderRejected");
+    this.message = `${providerId} rejected ${operationName}`;
+  }
+}
+
+export class AiInvalidStructuredOutputError extends TaggedError<"AiInvalidStructuredOutput"> {
+  public readonly type = "AiInvalidStructuredOutput";
+
+  constructor(public readonly providerId: string) {
+    super("AiInvalidStructuredOutput");
+    this.message = `${providerId} returned invalid structured output`;
+  }
+}
+
 export type PortError =
   | PortCancelledError
   | PortLimitExceededError
   | ExternalPortError
-  | AiCapabilityUnavailableError;
+  | AiCapabilityUnavailableError
+  | AiModelIncompatibleError
+  | AiModelNotFoundError
+  | AiProviderNotFoundError
+  | AiCredentialUnavailableError
+  | AiProviderUnsupportedError
+  | AiProviderRejectedError
+  | AiInvalidStructuredOutputError;

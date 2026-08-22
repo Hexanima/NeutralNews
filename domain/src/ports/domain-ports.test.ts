@@ -8,6 +8,7 @@ import {
   isOk,
   ok,
   type AiCapability,
+  type AiCredentialFieldValue,
   type Article,
   type ArticleUrl,
   type ContextResult,
@@ -217,6 +218,26 @@ describe("domain ports", () => {
       requiredCapabilities,
       prompt: "Generar resumen",
       outputSchema: { type: "object" },
+      options: { timeoutMs: 1000 },
+    });
+    const webSearchResult = await ai.searchWeb({
+      selection,
+      requiredCapabilities: ["web_search"],
+      query: "presupuesto nacional",
+      allowedDomains: ["example.com"],
+      blockedDomains: ["blocked.example"],
+      options: { timeoutMs: 1000, maxItems: 4 },
+    });
+    const modelsResult = await ai.listAccessibleModels({
+      providerId: "openai",
+      options: { timeoutMs: 1000 },
+    });
+    const credentialValues: readonly AiCredentialFieldValue[] = [
+      { fieldId: "api_key", value: "sk-test" },
+    ];
+    const credentialTestResult = await ai.testCredential({
+      providerId: "openai",
+      credentialValues,
       options: { timeoutMs: 1000 },
     });
     const triangulationResult = await editorial.generateTriangulation({
