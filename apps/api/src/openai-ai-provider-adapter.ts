@@ -164,6 +164,14 @@ const mapExternalError = (
     return new PortCancelledError(operationName);
   }
 
+  if (error.category === "TransientFailure") {
+    return new ExternalPortError(
+      operationName,
+      error.category,
+      error.statusCode,
+    );
+  }
+
   if (
     error.statusCode !== undefined &&
     error.statusCode >= 400 &&
@@ -324,6 +332,14 @@ const effectiveAllowedDomains = (
   );
 };
 
+const getIncompleteReason = (response: unknown): string | undefined => {
+  if (!isRecord(response) || !isRecord(response.incomplete_details)) {
+    return undefined;
+  }
+
+  return getString(response.incomplete_details, "reason");
+};
+
 const normalizeResponseState = (
   response: unknown,
   operationName: string,
@@ -333,6 +349,18 @@ const normalizeResponseState = (
   if (status !== undefined && status !== "completed") {
     if (status === "cancelled") {
       return err(new PortCancelledError(operationName));
+    }
+
+    if (status === "incomplete") {
+      const reason = getIncompleteReason(response);
+
+      if (reason === "max_output_tokens" || reason === "max_tokens") {
+        return err(new PortLimitExceededError(operationName, "maxItems"));
+      }
+
+      if (reason === "content_filter") {
+        return err(new AiProviderRejectedError(providerId, operationName));
+      }
     }
 
     return err(new ExternalPortError(operationName, "PermanentFailure"));

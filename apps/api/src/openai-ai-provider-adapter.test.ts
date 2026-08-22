@@ -550,6 +550,32 @@ describe("OpenAI AI provider adapter", () => {
     }
   });
 
+  it("keeps rate limit failures as transient external errors", async () => {
+    const client = createFakeClient();
+    client.responses.createError = { status: 429, message: "sk-from-vault Generar resumen" };
+    const { adapter } = await createAdapter({ client });
+
+    const result = await adapter.generateStructuredResponse({
+      selection: { providerId: "openai", modelId: "gpt-5.6-terra" },
+      requiredCapabilities: ["structured_outputs"],
+      prompt: "Generar resumen",
+      outputSchema: { type: "object" },
+    });
+
+    expect(isErr(result)).toBe(true);
+    if (isErr(result)) {
+      expect(result.error).toBeInstanceOf(ExternalPortError);
+      expect(result.error).not.toBeInstanceOf(AiProviderRejectedError);
+      const error = result.error;
+      if (!(error instanceof ExternalPortError)) {
+        throw error;
+      }
+      expect(error.category).toBe("TransientFailure");
+      expect(error.statusCode).toBe(429);
+      expect(JSON.stringify(error)).not.toContain("sk-from-vault");
+      expect(JSON.stringify(error)).not.toContain("Generar resumen");
+    }
+  });
   it("rejects structured output that does not match the requested schema", async () => {
     const client = createFakeClient();
     client.responses.createResult = {
@@ -611,6 +637,43 @@ describe("OpenAI AI provider adapter", () => {
     }
   });
 
+  it.each([
+    ["max_output_tokens", PortLimitExceededError, "maxItems"],
+    ["max_tokens", PortLimitExceededError, "maxItems"],
+    ["content_filter", AiProviderRejectedError, undefined],
+  ] as const)(
+    "normalizes incomplete Responses with %s reason",
+    async (reason, expectedError, expectedLimitName) => {
+      const client = createFakeClient();
+      client.responses.createResult = {
+        status: "incomplete",
+        incomplete_details: { reason },
+        output_text: JSON.stringify({ summary: "ok" }),
+      };
+      const { adapter } = await createAdapter({ client });
+
+      const result = await adapter.generateStructuredResponse({
+        selection: { providerId: "openai", modelId: "gpt-5.6-terra" },
+        requiredCapabilities: ["structured_outputs"],
+        prompt: "Generar resumen",
+        outputSchema: { type: "object" },
+      });
+
+      expect(isErr(result)).toBe(true);
+      if (isErr(result)) {
+        expect(result.error).toBeInstanceOf(expectedError);
+        if (expectedLimitName !== undefined) {
+          const error = result.error;
+          if (!(error instanceof PortLimitExceededError)) {
+            throw error;
+          }
+          expect(error.limitName).toBe(expectedLimitName);
+        }
+        expect(JSON.stringify(result.error)).not.toContain("Generar resumen");
+        expect(JSON.stringify(result.error)).not.toContain("sk-from-vault");
+      }
+    },
+  );
   it("normalizes model refusals before parsing structured output", async () => {
     const client = createFakeClient();
     client.responses.createResult = {
