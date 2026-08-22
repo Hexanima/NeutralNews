@@ -364,7 +364,6 @@ const countWebSearchCalls = (value: unknown): number => {
 
 const usageFromResponse = (
   response: unknown,
-  fallbackWebSearchCalls = 0,
 ): AiUsageMetrics => {
   const usage = isRecord(response) ? response.usage : undefined;
   const inputDetails = isRecord(usage) ? usage.input_tokens_details : undefined;
@@ -382,7 +381,7 @@ const usageFromResponse = (
     ...(getNumber(usage, "total_tokens") === undefined
       ? {}
       : { totalUnits: getNumber(usage, "total_tokens") }),
-    webSearchCalls: countWebSearchCalls(response) || fallbackWebSearchCalls,
+    webSearchCalls: countWebSearchCalls(response),
   };
 };
 
@@ -592,6 +591,8 @@ export const createOpenAiAiProviderAdapter = ({
               model: resolved.value.model.remoteModelId,
               input: input.query,
               store: false,
+              include: ["web_search_call.action.sources"],
+              tool_choice: "required",
               tools: [
                 {
                   type: "web_search",
@@ -615,10 +616,14 @@ export const createOpenAiAiProviderAdapter = ({
         return responseState;
       }
 
+      if (countWebSearchCalls(response.value) === 0) {
+        return err(new ExternalPortError(operationName, "PermanentFailure"));
+      }
+
       const result: AiWebSearchResult = {
         text: getString(response.value, "output_text") ?? "",
         citations: collectCitations(response.value, input.blockedDomains),
-        usage: usageFromResponse(response.value, 1),
+        usage: usageFromResponse(response.value),
       };
 
       return ok(result);

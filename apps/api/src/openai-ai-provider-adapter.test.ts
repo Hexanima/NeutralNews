@@ -266,6 +266,8 @@ describe("OpenAI AI provider adapter", () => {
       model: "gpt-5.6-terra",
       input: "presupuesto nacional",
       store: false,
+      include: ["web_search_call.action.sources"],
+      tool_choice: "required",
       tools: [
         {
           type: "web_search",
@@ -546,6 +548,30 @@ describe("OpenAI AI provider adapter", () => {
       expect(result.error).toBeInstanceOf(ExternalPortError);
       expect(JSON.stringify(result.error)).not.toContain("presupuesto nacional");
       expect(JSON.stringify(result.error)).not.toContain("sk-from-vault");
+    }
+  });
+
+  it("rejects completed web search responses when OpenAI did not call web_search", async () => {
+    const client = createFakeClient();
+    client.responses.createResult = {
+      status: "completed",
+      output_text: "Resultado sin busqueda",
+      output: [{ type: "message", content: [{ type: "output_text", text: "Resultado" }] }],
+      usage: { input_tokens: 4, output_tokens: 6, total_tokens: 10 },
+    };
+    const { adapter } = await createAdapter({ client });
+
+    const result = await adapter.searchWeb({
+      selection: { providerId: "openai", modelId: "gpt-5.6-terra" },
+      requiredCapabilities: ["web_search"],
+      query: "presupuesto nacional",
+    });
+
+    expect(isErr(result)).toBe(true);
+    if (isErr(result)) {
+      expect(result.error).toBeInstanceOf(ExternalPortError);
+      expect(JSON.stringify(result.error)).not.toContain("presupuesto nacional");
+      expect(JSON.stringify(result.error)).not.toContain("Resultado sin busqueda");
     }
   });
 
