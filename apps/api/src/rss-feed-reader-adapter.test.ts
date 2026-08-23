@@ -151,6 +151,25 @@ describe("RSS feed reader adapter", () => {
     }
   });
 
+  it.each([0, -1])(
+    "returns an empty successful result when maxItems is %s",
+    async (maxItems) => {
+      const adapter = createAdapter({ body: await readFixture("medio-rss.xml") });
+
+      const result = await adapter.readFeed({
+        source,
+        feedUrl,
+        options: { maxItems, maxBytes: 20_000, maxRedirects: 1 },
+      });
+
+      expect(isOk(result)).toBe(true);
+      if (isOk(result)) {
+        expect(result.value.articles).toEqual([]);
+        expect(result.value.evidence).toEqual([]);
+      }
+    },
+  );
+
   it("returns a permanent parse error for invalid XML without leaking the XML body", async () => {
     const leakedBody = "<rss><channel><item><title>xml-body-secret</title>";
     const adapter = createAdapter({ body: leakedBody });

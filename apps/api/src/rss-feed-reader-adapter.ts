@@ -310,6 +310,10 @@ const parseFeed = (input: {
   const evidence: EvidenceFragment[] = [];
 
   for (const candidate of candidates) {
+    if (articles.length >= input.maxItems) {
+      break;
+    }
+
     if (candidate === null) {
       continue;
     }
@@ -326,10 +330,6 @@ const parseFeed = (input: {
 
     if (evidenceFragment !== null) {
       evidence.push(evidenceFragment);
-    }
-
-    if (articles.length >= input.maxItems) {
-      break;
     }
   }
 
