@@ -280,6 +280,42 @@ describe("api app", () => {
   });
 
 
+  it("rejects AI configuration requests without a valid session", async () => {
+    const staticRoot = await createStaticRoot();
+    const environment = await createValidEnvironment();
+    const response = await fetchFromApp(
+      staticRoot,
+      "/api/configuration/ai",
+      environment,
+    );
+
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: "Unauthorized" });
+  });
+
+  it("rejects authenticated AI configuration mutations without an origin", async () => {
+    const staticRoot = await createStaticRoot();
+    const environment = await createValidEnvironment();
+    const response = await fetchFromApp(
+      staticRoot,
+      "/api/configuration/ai/active-selection",
+      environment,
+      {
+        method: "PUT",
+        headers: {
+          ...createSessionHeader(),
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          providerId: "openai",
+          modelId: "gpt-5.6-sol",
+        }),
+      },
+    );
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: "Forbidden" });
+  });
   it("rejects authenticated mutations without an origin", async () => {
     const staticRoot = await createStaticRoot();
     const environment = await createValidEnvironment();

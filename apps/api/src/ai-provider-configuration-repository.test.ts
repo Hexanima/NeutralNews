@@ -290,3 +290,35 @@ describe("JSON AI provider configuration repository", () => {
     ).toBe(true);
   });
 });
+
+describe("JSON AI provider credential reference deletion", () => {
+  it("removes credential references without exposing or touching secret values", async () => {
+    const directory = await createTemporaryDirectory();
+    const repository = createJsonAiProviderConfigurationRepository(directory);
+    const secret = "sk-delete-reference-secret";
+    await repository.saveCredentialReference({
+      providerId: "openai",
+      fieldId: "api_key",
+      reference: "cred_v1_visible_reference",
+      secretValue: secret,
+    });
+
+    const deleted = await repository.deleteCredentialReferences({
+      providerId: "openai",
+    });
+
+    expect(deleted.ok).toBe(true);
+    if (!isOk(deleted)) {
+      throw deleted.error;
+    }
+    expect(deleted.value.configurationVersion).toBe(3);
+    expect(deleted.value.credentialReferences).toEqual([]);
+    const storedBody = await readFile(join(directory, configPath), "utf8");
+    expect(storedBody).not.toContain("cred_v1_visible_reference");
+    expect(storedBody).not.toContain(secret);
+    expect(await readStoredConfiguration(directory)).toMatchObject({
+      configurationVersion: 3,
+      credentialReferences: [],
+    });
+  });
+});

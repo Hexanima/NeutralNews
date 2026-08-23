@@ -69,6 +69,14 @@ export interface JsonAiProviderConfigurationRepository {
       JsonAiProviderConfigurationRepositoryError
     >
   >;
+  deleteCredentialReferences: (input: {
+    providerId: string;
+  }) => Promise<
+    Result<
+      EffectiveAiProviderConfiguration,
+      JsonAiProviderConfigurationRepositoryError
+    >
+  >;
   saveModelSynchronization: (input: AiModelSynchronizationSnapshot) => Promise<
     Result<
       EffectiveAiProviderConfiguration,
@@ -299,6 +307,27 @@ export const createJsonAiProviderConfigurationRepository = (
         ),
         { providerId, fieldId, reference },
       ];
+      const nextSnapshot = createSnapshotFromCurrent(current.value, {
+        credentialReferences,
+      });
+
+      if (!nextSnapshot.ok) {
+        return nextSnapshot;
+      }
+
+      return saveMutatedSnapshot(nextSnapshot.value);
+    },
+
+    deleteCredentialReferences: async ({ providerId }) => {
+      const current = await readSnapshot();
+
+      if (!current.ok) {
+        return current;
+      }
+
+      const credentialReferences = current.value.credentialReferences.filter(
+        (credentialReference) => credentialReference.providerId !== providerId,
+      );
       const nextSnapshot = createSnapshotFromCurrent(current.value, {
         credentialReferences,
       });
