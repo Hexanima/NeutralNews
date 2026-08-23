@@ -309,6 +309,9 @@ export const createJsonAiProviderConfigurationRepository = (
       ];
       const nextSnapshot = createSnapshotFromCurrent(current.value, {
         credentialReferences,
+        modelSynchronizations: current.value.modelSynchronizations.filter(
+          (synchronization) => synchronization.providerId !== providerId,
+        ),
       });
 
       if (!nextSnapshot.ok) {
@@ -330,6 +333,9 @@ export const createJsonAiProviderConfigurationRepository = (
       );
       const nextSnapshot = createSnapshotFromCurrent(current.value, {
         credentialReferences,
+        modelSynchronizations: current.value.modelSynchronizations.filter(
+          (synchronization) => synchronization.providerId !== providerId,
+        ),
       });
 
       if (!nextSnapshot.ok) {

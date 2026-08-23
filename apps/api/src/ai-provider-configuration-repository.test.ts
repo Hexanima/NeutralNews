@@ -35,6 +35,7 @@ const readStoredConfiguration = async (directory: string) =>
     credentialReferences: unknown[];
     providerOverrides: unknown[];
     modelOverrides: unknown[];
+    modelSynchronizations: unknown[];
   };
 
 afterEach(async () => {
@@ -319,6 +320,84 @@ describe("JSON AI provider credential reference deletion", () => {
     expect(await readStoredConfiguration(directory)).toMatchObject({
       configurationVersion: 3,
       credentialReferences: [],
+    });
+  });
+
+  it("invalidates provider model synchronizations when replacing a credential reference", async () => {
+    const directory = await createTemporaryDirectory();
+    const repository = createJsonAiProviderConfigurationRepository(directory);
+    await repository.saveCredentialReference({
+      providerId: "openai",
+      fieldId: "api_key",
+      reference: "cred_v1_original_reference",
+    });
+    await repository.saveModelSynchronization({
+      providerId: "openai",
+      syncedAt: "2026-08-22T00:00:00.000Z",
+      remoteModels: [{ id: "gpt-5.6-terra" }],
+    });
+
+    const saved = await repository.saveCredentialReference({
+      providerId: "openai",
+      fieldId: "api_key",
+      reference: "cred_v1_replacement_reference",
+    });
+
+    expect(saved.ok).toBe(true);
+    if (!isOk(saved)) {
+      throw saved.error;
+    }
+    expect(saved.value.configurationVersion).toBe(4);
+    expect(saved.value.credentialReferences).toEqual([
+      {
+        providerId: "openai",
+        fieldId: "api_key",
+        reference: "cred_v1_replacement_reference",
+      },
+    ]);
+    expect(saved.value.modelSynchronizations).toEqual([]);
+    expect(await readStoredConfiguration(directory)).toMatchObject({
+      configurationVersion: 4,
+      credentialReferences: [
+        {
+          providerId: "openai",
+          fieldId: "api_key",
+          reference: "cred_v1_replacement_reference",
+        },
+      ],
+      modelSynchronizations: [],
+    });
+  });
+
+  it("invalidates provider model synchronizations when deleting credential references", async () => {
+    const directory = await createTemporaryDirectory();
+    const repository = createJsonAiProviderConfigurationRepository(directory);
+    await repository.saveCredentialReference({
+      providerId: "openai",
+      fieldId: "api_key",
+      reference: "cred_v1_visible_reference",
+    });
+    await repository.saveModelSynchronization({
+      providerId: "openai",
+      syncedAt: "2026-08-22T00:00:00.000Z",
+      remoteModels: [{ id: "gpt-5.6-terra" }],
+    });
+
+    const deleted = await repository.deleteCredentialReferences({
+      providerId: "openai",
+    });
+
+    expect(deleted.ok).toBe(true);
+    if (!isOk(deleted)) {
+      throw deleted.error;
+    }
+    expect(deleted.value.configurationVersion).toBe(4);
+    expect(deleted.value.credentialReferences).toEqual([]);
+    expect(deleted.value.modelSynchronizations).toEqual([]);
+    expect(await readStoredConfiguration(directory)).toMatchObject({
+      configurationVersion: 4,
+      credentialReferences: [],
+      modelSynchronizations: [],
     });
   });
 });

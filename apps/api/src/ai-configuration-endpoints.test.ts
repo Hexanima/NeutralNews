@@ -350,6 +350,143 @@ describe("AI provider configuration HTTP endpoints", () => {
     expect(JSON.stringify(body)).not.toContain(apiKey);
   });
 
+  it("clears synced model availability when replacing a credential", async () => {
+    const environment = await createValidEnvironment();
+    const credentialVault = createInMemoryCredentialVault();
+    const aiProvider = createFakeAiGenerationPort({
+      remoteModels: [{ id: "gpt-5.6-terra" }, { id: "gpt-5.6-sol" }],
+    });
+    await fetchFromApp(
+      "/api/configuration/ai/providers/openai/credentials",
+      environment,
+      {
+        method: "PUT",
+        json: { credentialValues: [{ fieldId: "api_key", value: apiKey }] },
+      },
+      { credentialVault, aiProvider },
+    );
+    await fetchFromApp(
+      "/api/configuration/ai/providers/openai/models/sync",
+      environment,
+      { method: "POST" },
+      { credentialVault, aiProvider },
+    );
+
+    const replaced = await fetchFromApp(
+      "/api/configuration/ai/providers/openai/credentials",
+      environment,
+      {
+        method: "PUT",
+        json: {
+          credentialValues: [
+            { fieldId: "api_key", value: "sk-replacement-secret" },
+          ],
+        },
+      },
+      { credentialVault, aiProvider },
+    );
+    const selected = await fetchFromApp(
+      "/api/configuration/ai/active-selection",
+      environment,
+      {
+        method: "PUT",
+        json: { providerId: "openai", modelId: "gpt-5.6-sol" },
+      },
+      { credentialVault, aiProvider },
+    );
+
+    expect(replaced.status).toBe(200);
+    const body = await replaced.json();
+    expect(body.modelSynchronizations).toEqual([]);
+    expect(body.models).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          modelId: "gpt-5.6-sol",
+          availabilityStatus: "unknown",
+        }),
+      ]),
+    );
+    expect(selected.status).toBe(409);
+    expect(await selected.json()).toEqual({
+      error: {
+        code: "AiModelUnavailable",
+        providerId: "openai",
+        modelId: "gpt-5.6-sol",
+      },
+    });
+    expect(
+      (await readStoredConfiguration(environment.NEUTRALNEWS_DATA_DIR!))
+        .modelSynchronizations,
+    ).toEqual([]);
+  });
+
+  it("clears synced model availability when deleting a credential", async () => {
+    const environment = await createValidEnvironment();
+    const credentialVault = createInMemoryCredentialVault();
+    const aiProvider = createFakeAiGenerationPort({
+      remoteModels: [{ id: "gpt-5.6-terra" }, { id: "gpt-5.6-sol" }],
+    });
+    await fetchFromApp(
+      "/api/configuration/ai/providers/openai/credentials",
+      environment,
+      {
+        method: "PUT",
+        json: { credentialValues: [{ fieldId: "api_key", value: apiKey }] },
+      },
+      { credentialVault, aiProvider },
+    );
+    await fetchFromApp(
+      "/api/configuration/ai/providers/openai/models/sync",
+      environment,
+      { method: "POST" },
+      { credentialVault, aiProvider },
+    );
+
+    const deleted = await fetchFromApp(
+      "/api/configuration/ai/providers/openai/credentials",
+      environment,
+      { method: "DELETE" },
+      { credentialVault, aiProvider },
+    );
+    const selected = await fetchFromApp(
+      "/api/configuration/ai/active-selection",
+      environment,
+      {
+        method: "PUT",
+        json: { providerId: "openai", modelId: "gpt-5.6-sol" },
+      },
+      { credentialVault, aiProvider },
+    );
+
+    expect(deleted.status).toBe(200);
+    const body = await deleted.json();
+    expect(body.modelSynchronizations).toEqual([]);
+    expect(body.providers[0].credentialStatus).toEqual({
+      status: "not_configured",
+    });
+    expect(body.models).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          modelId: "gpt-5.6-sol",
+          availabilityStatus: "unknown",
+        }),
+      ]),
+    );
+    expect(selected.status).toBe(409);
+    expect(await selected.json()).toEqual({
+      error: {
+        code: "AiModelUnavailable",
+        providerId: "openai",
+        modelId: "gpt-5.6-sol",
+      },
+    });
+    const stored = await readStoredConfiguration(
+      environment.NEUTRALNEWS_DATA_DIR!,
+    );
+    expect(stored.credentialReferences).toEqual([]);
+    expect(stored.modelSynchronizations).toEqual([]);
+  });
+
   it("returns an explicit vault error when syncing with an unavailable credential vault", async () => {
     const environment = await createValidEnvironment();
     await mkdir(join(environment.NEUTRALNEWS_DATA_DIR!, "configuration"), {
