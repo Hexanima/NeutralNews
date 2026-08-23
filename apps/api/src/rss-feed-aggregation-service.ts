@@ -51,6 +51,9 @@ export const aggregateConfiguredRssFeeds = async ({
         signal,
         maxConcurrency: config.rssFeeds.maxConcurrency,
       },
+      deduplication: {
+        trackingParameters: config.rssFeeds.trackingParameters,
+      },
     },
   );
 };

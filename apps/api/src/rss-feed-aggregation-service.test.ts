@@ -1,7 +1,9 @@
 import {
   defaultRegionalPreferences,
   ok,
+  type Article,
   type ArticleUrl,
+  type EvidenceFragment,
   type CountryCode,
   type IsoDateTimeString,
   type LanguageCode,
@@ -53,6 +55,7 @@ const config: ApiConfig = {
   },
   rssFeeds: {
     maxConcurrency: 1,
+    trackingParameters: ["utm_source"],
   },
   trustedProxyAddresses: [],
   allowedOrigins: [],
@@ -123,5 +126,70 @@ describe("RSS feed aggregation service", () => {
     expect(result.ok).toBe(true);
     expect(calls).toHaveLength(2);
     expect(maxObservedReads).toBe(1);
+  });
+
+  it("passes configured tracking parameters into RSS deduplication", async () => {
+    const first = createRssEntry("1");
+    const second = createRssEntry("2");
+    const firstArticle: Article = {
+      id: "22222222-2222-4222-8222-222222222221" as UUID,
+      sourceId: first.source.id,
+      url: "https://example.com/politica/reforma" as ArticleUrl,
+      title: "Congreso debate una reforma presupuestaria",
+      language: "es-ar" as LanguageCode,
+      publishedAt: reviewedAt,
+    };
+    const secondArticle: Article = {
+      ...firstArticle,
+      id: "22222222-2222-4222-8222-222222222222" as UUID,
+      sourceId: second.source.id,
+      url: "https://example.com/politica/reforma?utm_source=rss" as ArticleUrl,
+    };
+    const createEvidence = (article: Article): EvidenceFragment => ({
+      id: `33333333-3333-4333-8333-33333333333${article.id.endsWith("1") ? "1" : "2"}` as UUID,
+      text: "Resumen",
+      provenance: {
+        articleId: article.id,
+        sourceId: article.sourceId,
+        url: article.url,
+        contentKind: "rss_summary",
+      },
+      quality: { contentLevel: "partial" },
+    });
+    const rssFeedReader: RssFeedReaderPort = {
+      readFeed: async (input) =>
+        ok({
+          sourceId: input.source.id,
+          feedUrl: input.feedUrl,
+          articles: input.source.id === first.source.id ? [firstArticle] : [secondArticle],
+          evidence: [
+            createEvidence(
+              input.source.id === first.source.id ? firstArticle : secondArticle,
+            ),
+          ],
+        }),
+    };
+
+    const result = await aggregateConfiguredRssFeeds({
+      config,
+      repository: {
+        getEffectiveConfiguration: async () =>
+          ok({
+            schemaVersion: 1,
+            configurationVersion: 1,
+            cacheVersion: "test-cache-version",
+            sources: [first, second],
+            sourceOverrides: [],
+            regionalPreferences: defaultRegionalPreferences,
+          }),
+      },
+      rssFeedReader,
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.articles).toHaveLength(1);
+      expect(result.value.articleMergeGroups[0]?.references).toHaveLength(2);
+    }
   });
 });

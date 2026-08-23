@@ -65,6 +65,18 @@ describe("api configuration", () => {
       },
       rssFeeds: {
         maxConcurrency: 3,
+        trackingParameters: [
+          "utm_source",
+          "utm_medium",
+          "utm_campaign",
+          "utm_term",
+          "utm_content",
+          "utm_id",
+          "gclid",
+          "fbclid",
+          "mc_cid",
+          "mc_eid",
+        ],
       },
       trustedProxyAddresses: [],
       allowedOrigins: [
@@ -141,13 +153,15 @@ describe("api configuration", () => {
       retryDelayMs: 100,
     });
   });
-  it("loads configurable RSS feed concurrency", async () => {
+  it("loads configurable RSS feed settings", async () => {
     const environment = await createValidEnvironment({
       NEUTRALNEWS_RSS_MAX_CONCURRENCY: "5",
+      NEUTRALNEWS_RSS_TRACKING_PARAMS: "utm_source, FBCLID, custom_id, utm_source",
     });
 
     expect(loadApiConfig(environment).rssFeeds).toEqual({
       maxConcurrency: 5,
+      trackingParameters: ["utm_source", "fbclid", "custom_id"],
     });
   });
 
@@ -374,6 +388,7 @@ describe("api configuration", () => {
     expect(envExample).toContain("NEUTRALNEWS_EXTERNAL_MAX_ATTEMPTS=");
     expect(envExample).toContain("NEUTRALNEWS_EXTERNAL_RETRY_DELAY_MS=");
     expect(envExample).toContain("NEUTRALNEWS_RSS_MAX_CONCURRENCY=");
+    expect(envExample).toContain("NEUTRALNEWS_RSS_TRACKING_PARAMS=");
     expect(envExample).toContain("NEUTRALNEWS_TRUSTED_PROXY_ADDRESSES=");
     expect(envExample).toContain("NEUTRALNEWS_ALLOWED_ORIGINS=");
     expect(envExample).toContain("NEUTRALNEWS_ACCESS_PASSWORD_HASH=");
