@@ -412,8 +412,17 @@ describe("aggregate RSS feeds use case", () => {
 
     expect(isOk(result)).toBe(true);
     if (isOk(result)) {
+      const articleIds = new Set(result.value.articles.map((article) => article.id));
+
       expect(result.value.articles).toHaveLength(1);
       expect(result.value.evidence).toHaveLength(2);
+      expect(
+        result.value.evidence.every((evidence) =>
+          articleIds.has(evidence.provenance.articleId),
+        ),
+      ).toBe(true);
+      expect(result.value.evidence.map((evidence) => evidence.provenance.articleId))
+        .toEqual([original.id, original.id]);
       expect(result.value.successfulFeeds).toEqual([
         {
           sourceId: first.source.id,

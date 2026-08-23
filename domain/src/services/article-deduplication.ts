@@ -235,6 +235,7 @@ export const deduplicateArticles = ({
 }: DeduplicateArticlesInput): DeduplicatedArticlesResult => {
   const groups: ArticleGroup[] = [];
   const canonicalUrlByArticleId = new Map<UUID, ArticleUrl>();
+  const canonicalArticleIdByArticleId = new Map<UUID, UUID>();
 
   for (const article of articles) {
     const candidate: ArticleCandidate = {
@@ -250,9 +251,14 @@ export const deduplicateArticles = ({
 
     if (matchingGroup === undefined) {
       groups.push(createGroup(candidate));
+      canonicalArticleIdByArticleId.set(article.id, article.id);
       continue;
     }
 
+    canonicalArticleIdByArticleId.set(
+      article.id,
+      matchingGroup.canonicalArticle.id,
+    );
     matchingGroup.canonicalUrls.add(candidate.canonicalUrl);
     matchingGroup.references.push(toMergeReference(article));
   }
@@ -263,6 +269,9 @@ export const deduplicateArticles = ({
       ...fragment,
       provenance: {
         ...fragment.provenance,
+        articleId:
+          canonicalArticleIdByArticleId.get(fragment.provenance.articleId) ??
+          fragment.provenance.articleId,
         url:
           canonicalUrlByArticleId.get(fragment.provenance.articleId) ??
           canonicalizeArticleUrl(fragment.provenance.url, { trackingParameters }),

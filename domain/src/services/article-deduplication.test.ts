@@ -103,7 +103,7 @@ describe("article deduplication", () => {
         contentKind: "rss_summary",
       },
       {
-        articleId: duplicate.id,
+        articleId: original.id,
         sourceId: duplicate.sourceId,
         url: "https://example.com/politica/reforma",
         contentKind: "rss_summary",
