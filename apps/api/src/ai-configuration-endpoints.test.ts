@@ -814,15 +814,10 @@ describe("AI provider configuration HTTP endpoints", () => {
       },
     });
     expect(testedBody).not.toContain(apiKey);
-    expect(synced.status).toBe(502);
+    expect(synced.status).toBe(200);
     const syncedBody = await synced.text();
-    expect(JSON.parse(syncedBody)).toEqual({
-      error: {
-        code: "AiProviderRemoteError",
-        providerId: "openai",
-        category: "TransientFailure",
-        statusCode: 503,
-      },
+    expect(JSON.parse(syncedBody)).toMatchObject({
+      warnings: [{ code: "AiModelSyncFailed", providerId: "openai" }],
     });
     expect(syncedBody).not.toContain(apiKey);
   });

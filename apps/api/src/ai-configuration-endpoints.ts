@@ -734,7 +734,11 @@ const handleSyncModels = async (
   sendJson(
     response,
     200,
-    await toConfigurationResponse(synced.value.configuration, input.credentialVault),
+    await toConfigurationResponse(
+      synced.value.configuration,
+      input.credentialVault,
+      synced.value.warning === undefined ? [] : [synced.value.warning],
+    ),
   );
 };
 

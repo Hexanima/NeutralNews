@@ -1,4 +1,5 @@
 import {
+  ExternalPortError,
   ok,
   type AiGenerationPort,
   type EffectiveAiProviderConfiguration,
@@ -12,8 +13,14 @@ import type {
   JsonAiProviderConfigurationRepositoryError,
 } from "./ai-provider-configuration-repository.js";
 
+export interface AiModelSyncWarning {
+  readonly code: "AiModelSyncFailed";
+  readonly providerId: string;
+}
+
 export interface SyncAiProviderModelsResult {
   readonly configuration: EffectiveAiProviderConfiguration;
+  readonly warning?: AiModelSyncWarning | undefined;
 }
 
 export interface SyncAiProviderModelsInput {
@@ -48,6 +55,13 @@ export const syncAiProviderModels = async ({
   const remoteModels = await aiProvider.listAccessibleModels({ providerId });
 
   if (!remoteModels.ok) {
+    if (remoteModels.error instanceof ExternalPortError) {
+      return ok({
+        configuration: currentConfiguration.value,
+        warning: { code: "AiModelSyncFailed", providerId },
+      });
+    }
+
     return remoteModels;
   }
 
