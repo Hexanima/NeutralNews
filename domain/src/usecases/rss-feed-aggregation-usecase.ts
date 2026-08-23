@@ -93,10 +93,6 @@ const failureFromError = (
     : {}),
 });
 
-const hasUsefulResult = (result: AggregateRssFeedsResult): boolean =>
-  result.articles.length > 0 ||
-  result.evidence.length > 0 ||
-  result.successfulFeeds.length > 0;
 
 export const aggregateRssFeedsUseCase: UseCase<
   AggregateRssFeedsDependencies,
@@ -175,7 +171,7 @@ export const aggregateRssFeedsUseCase: UseCase<
       ),
     };
 
-    if (isSignalAborted(signal) && !hasUsefulResult(aggregation)) {
+    if (isSignalAborted(signal)) {
       return err(new PortCancelledError(operationName));
     }
 

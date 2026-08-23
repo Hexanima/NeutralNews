@@ -311,6 +311,41 @@ describe("aggregate RSS feeds use case", () => {
     }
   });
 
+
+  it("returns a cancellation error even after collecting useful results", async () => {
+    const first = createRssEntry("1");
+    const second = createRssEntry("2");
+    const controller = new AbortController();
+    const calls: Parameters<RssFeedReaderPort["readFeed"]>[0][] = [];
+    const rssFeedReader: RssFeedReaderPort = {
+      readFeed: async (input) => {
+        calls.push(input);
+
+        if (input.source.id === first.source.id) {
+          controller.abort();
+          return okFeed(first, "1");
+        }
+
+        return okFeed(second, "2");
+      },
+    };
+
+    const result = await aggregateRssFeedsUseCase.execute(
+      { rssFeedReader },
+      {
+        sources: [first, second],
+        options: { signal: controller.signal, maxConcurrency: 1 },
+      },
+    );
+
+    expect(calls).toHaveLength(1);
+    expect(isErr(result)).toBe(true);
+    if (isErr(result)) {
+      expect(result.error).toBeInstanceOf(PortCancelledError);
+      expect(result.error.operationName).toBe("rss.feed.aggregate");
+    }
+  });
+
   it("ignores inactive and search-only sources", async () => {
     const activeRss = createRssEntry("1");
     const inactiveRss: NewsSourceCatalogEntry = {
