@@ -372,6 +372,52 @@ describe("api app", () => {
       invalidatedAt: expect.any(String),
     });
   });
+  it("returns an error when real AI feed invalidation cannot be persisted", async () => {
+    const staticRoot = await createStaticRoot();
+    const environment = await createValidEnvironment();
+    const dataDirectory = environment.NEUTRALNEWS_DATA_DIR!;
+    await mkdir(join(dataDirectory, "configuration"), { recursive: true });
+    await writeFile(
+      join(dataDirectory, "configuration", "ai-providers.json"),
+      `${JSON.stringify({
+        schemaVersion: 1,
+        configurationVersion: 1,
+        activeSelection: { providerId: "openai", modelId: "gpt-5.6-terra" },
+        credentialReferences: [],
+        providerOverrides: [],
+        modelOverrides: [],
+        modelSynchronizations: [
+          {
+            providerId: "openai",
+            syncedAt: "2026-08-22T00:00:00.000Z",
+            remoteModels: [{ id: "gpt-5.6-terra" }, { id: "gpt-5.6-sol" }],
+          },
+        ],
+      })}\n`,
+    );
+    await writeFile(join(dataDirectory, "cache"), "not a directory");
+
+    const response = await fetchFromApp(
+      staticRoot,
+      "/api/configuration/ai/active-selection",
+      environment,
+      {
+        method: "PUT",
+        headers: {
+          ...createSessionHeader(),
+          origin: "http://127.0.0.1:3000",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          providerId: "openai",
+          modelId: "gpt-5.6-sol",
+        }),
+      },
+    );
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ error: "InternalServerError" });
+  });
   it("rejects authenticated mutations without an origin", async () => {
     const staticRoot = await createStaticRoot();
     const environment = await createValidEnvironment();

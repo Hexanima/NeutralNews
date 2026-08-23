@@ -437,11 +437,15 @@ const createDefaultFeedInvalidator = (dataDirectory: string) => {
       ? current.value.version
       : 0;
 
-    await repository.writeJson("cache/feed-invalidation.json", {
+    const written = await repository.writeJson("cache/feed-invalidation.json", {
       schemaVersion: 1,
       version: currentVersion + 1,
       invalidatedAt: new Date().toISOString(),
     });
+
+    if (!written.ok) {
+      throw written.error;
+    }
   };
 };
 
