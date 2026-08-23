@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AddressInfo } from "node:net";
@@ -13,7 +13,11 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { createApp, loadApiConfig } from "./app.js";
 import { createSession } from "./authentication.js";
-import { createInMemoryCredentialVault } from "./credential-vault.js";
+import {
+  createInMemoryCredentialVault,
+  CredentialVaultUnavailableError,
+  type CredentialVault,
+} from "./credential-vault.js";
 
 const temporaryDirectories: string[] = [];
 const validPasswordHash =
@@ -60,7 +64,7 @@ const fetchFromApp = async (
   init?: RequestInit & { json?: unknown },
   options: {
     aiProvider?: ReturnType<typeof createFakeAiGenerationPort>;
-    credentialVault?: ReturnType<typeof createInMemoryCredentialVault>;
+    credentialVault?: CredentialVault;
     clearFeedCache?: () => Promise<void>;
   } = {},
 ): Promise<Response> => {
@@ -140,6 +144,31 @@ describe("AI provider configuration HTTP endpoints", () => {
     });
     expect(JSON.stringify(body)).not.toContain("reference");
     expect(JSON.stringify(body)).not.toContain("sk-");
+  });
+
+  it("does not report orphan vault secrets as configured without a persisted reference", async () => {
+    const environment = await createValidEnvironment();
+    const credentialVault = createInMemoryCredentialVault();
+    const saved = await credentialVault.saveSecret("openai", apiKey);
+
+    expect(saved.ok).toBe(true);
+
+    const response = await fetchFromApp(
+      "/api/configuration/ai",
+      environment,
+      undefined,
+      { credentialVault },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      providers: [
+        {
+          id: "openai",
+          credentialStatus: { status: "not_configured" },
+        },
+      ],
+    });
   });
 
   it("stores and replaces credentials without returning or persisting the secret value", async () => {
@@ -321,6 +350,49 @@ describe("AI provider configuration HTTP endpoints", () => {
     expect(JSON.stringify(body)).not.toContain(apiKey);
   });
 
+  it("returns an explicit vault error when syncing with an unavailable credential vault", async () => {
+    const environment = await createValidEnvironment();
+    await mkdir(join(environment.NEUTRALNEWS_DATA_DIR!, "configuration"), {
+      recursive: true,
+    });
+    await writeFile(
+      join(environment.NEUTRALNEWS_DATA_DIR!, configPath),
+      `${JSON.stringify({
+        schemaVersion: 1,
+        configurationVersion: 1,
+        activeSelection: { providerId: "openai", modelId: "gpt-5.6-terra" },
+        credentialReferences: [
+          {
+            providerId: "openai",
+            fieldId: "api_key",
+            reference: "cred_v1_missing_key",
+          },
+        ],
+        providerOverrides: [],
+        modelOverrides: [],
+        modelSynchronizations: [],
+      })}\n`,
+    );
+    const unavailableVault: CredentialVault = {
+      saveSecret: async () => ({ ok: false, error: new CredentialVaultUnavailableError() }),
+      readSecret: async () => ({ ok: false, error: new CredentialVaultUnavailableError() }),
+      describeSecret: async () => ({ ok: false, error: new CredentialVaultUnavailableError() }),
+      deleteSecret: async () => ({ ok: false, error: new CredentialVaultUnavailableError() }),
+    };
+
+    const response = await fetchFromApp(
+      "/api/configuration/ai/providers/openai/models/sync",
+      environment,
+      { method: "POST" },
+      { credentialVault: unavailableVault },
+    );
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      error: { code: "CredentialVaultUnavailable" },
+    });
+  });
+
   it("rejects sync without a configured credential", async () => {
     const environment = await createValidEnvironment();
 
@@ -356,6 +428,57 @@ describe("AI provider configuration HTTP endpoints", () => {
     expect(await response.json()).toEqual({
       error: {
         code: "AiModelUnavailable",
+        providerId: "openai",
+        modelId: "gpt-5.6-sol",
+      },
+    });
+    expect(
+      (await readStoredConfiguration(environment.NEUTRALNEWS_DATA_DIR!))
+        .activeSelection,
+    ).toEqual({ providerId: "openai", modelId: "gpt-5.6-terra" });
+  });
+
+  it("rejects incompatible active selections and keeps the previous selection", async () => {
+    const environment = await createValidEnvironment();
+    await mkdir(join(environment.NEUTRALNEWS_DATA_DIR!, "configuration"), {
+      recursive: true,
+    });
+    await writeFile(
+      join(environment.NEUTRALNEWS_DATA_DIR!, configPath),
+      `${JSON.stringify({
+        schemaVersion: 1,
+        configurationVersion: 1,
+        activeSelection: { providerId: "openai", modelId: "gpt-5.6-terra" },
+        credentialReferences: [],
+        providerOverrides: [],
+        modelOverrides: initialAiProviderCatalogSnapshot.models.map((model) =>
+          model.modelId === "gpt-5.6-sol"
+            ? { ...model, compatibilityStatus: "incompatible" }
+            : model,
+        ),
+        modelSynchronizations: [
+          {
+            providerId: "openai",
+            syncedAt: "2026-08-22T00:00:00.000Z",
+            remoteModels: [{ id: "gpt-5.6-terra" }, { id: "gpt-5.6-sol" }],
+          },
+        ],
+      })}\n`,
+    );
+
+    const response = await fetchFromApp(
+      "/api/configuration/ai/active-selection",
+      environment,
+      {
+        method: "PUT",
+        json: { providerId: "openai", modelId: "gpt-5.6-sol" },
+      },
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: {
+        code: "AiModelIncompatible",
         providerId: "openai",
         modelId: "gpt-5.6-sol",
       },

@@ -138,14 +138,48 @@ const toCredentialStatus = (
       }
     : { status: "not_configured" };
 
+const credentialReferenceForProvider = (
+  configuration: EffectiveAiProviderConfiguration,
+  providerId: string,
+  fieldId: string,
+) =>
+  configuration.credentialReferences.find(
+    (credentialReference) =>
+      credentialReference.providerId === providerId &&
+      credentialReference.fieldId === fieldId,
+  ) ?? null;
+
 const describeProviderCredential = async (
   credentialVault: CredentialVault,
+  configuration: EffectiveAiProviderConfiguration,
   providerId: string,
 ): Promise<CredentialStatus> => {
+  const provider = providerForId(configuration, providerId);
+  const secretField = provider === undefined
+    ? null
+    : secretCredentialField(provider.credentialSchema.fields);
+  const persistedReference = secretField === null
+    ? null
+    : credentialReferenceForProvider(configuration, providerId, secretField.id);
+
+  if (persistedReference === null) {
+    return { status: "not_configured" };
+  }
+
   const description = await credentialVault.describeSecret(providerId);
 
   if (!description.ok) {
-    return { status: "vault_unavailable" };
+    return description.error.type === "CredentialVaultUnavailable" ||
+      description.error.type === "CredentialVaultStorage"
+      ? { status: "vault_unavailable" }
+      : { status: "not_configured" };
+  }
+
+  if (
+    !description.value.configured ||
+    description.value.reference !== persistedReference.reference
+  ) {
+    return { status: "not_configured" };
   }
 
   return toCredentialStatus(description.value);
@@ -165,6 +199,7 @@ const toConfigurationResponse = async (
       ...provider,
       credentialStatus: await describeProviderCredential(
         credentialVault,
+        configuration,
         provider.id,
       ),
     })),
@@ -610,17 +645,43 @@ const handleSyncModels = async (
   }
 
   const secretField = secretCredentialField(provider.credentialSchema.fields);
-  const credentialStatus = await describeProviderCredential(
-    input.credentialVault,
-    input.providerId,
-  );
+  const persistedReference = secretField === null
+    ? null
+    : credentialReferenceForProvider(
+        configuration.value,
+        input.providerId,
+        secretField.id,
+      );
 
-  if (secretField === null || credentialStatus.status !== "configured") {
+  if (secretField === null || persistedReference === null) {
     sendJson(response, 409, {
       error: {
         code: "AiCredentialUnavailable",
         providerId: input.providerId,
         fieldId: secretField?.id ?? "credential",
+      },
+    });
+    return;
+  }
+
+  const credentialDescription = await input.credentialVault.describeSecret(
+    input.providerId,
+  );
+
+  if (!credentialDescription.ok) {
+    sendVaultError(response, credentialDescription.error);
+    return;
+  }
+
+  if (
+    !credentialDescription.value.configured ||
+    credentialDescription.value.reference !== persistedReference.reference
+  ) {
+    sendJson(response, 409, {
+      error: {
+        code: "AiCredentialUnavailable",
+        providerId: input.providerId,
+        fieldId: secretField.id,
       },
     });
     return;
