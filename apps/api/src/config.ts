@@ -20,6 +20,7 @@ export interface ApiConfig {
   credentialVaultKey?: string;
   aiProviderStatus: AiProviderStatus;
   externalServices: ExternalServiceConfig;
+  rssFeeds: RssFeedConfig;
   trustedProxyAddresses: string[];
   allowedOrigins: string[];
 }
@@ -28,6 +29,10 @@ export interface ExternalServiceConfig {
   timeoutMs: number;
   maxAttempts: number;
   retryDelayMs: number;
+}
+
+export interface RssFeedConfig {
+  maxConcurrency: number;
 }
 
 export class ConfigurationError extends Error {
@@ -47,6 +52,7 @@ const defaultTimeZone = "America/Argentina/Buenos_Aires";
 const defaultExternalTimeoutMs = 15_000;
 const defaultExternalMaxAttempts = 3;
 const defaultExternalRetryDelayMs = 250;
+const defaultRssMaxConcurrency = 3;
 const argon2HashPattern =
   /^\$argon2id\$v=19\$m=\d+,t=\d+,p=\d+\$[A-Za-z0-9+/]+={0,2}\$[A-Za-z0-9+/]+={0,2}$/;
 const minimumSessionSecretLength = 32;
@@ -351,6 +357,19 @@ const resolveExternalServiceConfig = (
   ),
 });
 
+const resolveRssFeedConfig = (
+  environment: NodeJS.ProcessEnv,
+  issues: ConfigurationIssue[],
+): RssFeedConfig => ({
+  maxConcurrency: parseIntegerSetting(
+    environment,
+    "NEUTRALNEWS_RSS_MAX_CONCURRENCY",
+    defaultRssMaxConcurrency,
+    1,
+    issues,
+  ),
+});
+
 const resolveTrustedProxyAddresses = (
   environment: NodeJS.ProcessEnv,
   issues: ConfigurationIssue[],
@@ -440,6 +459,7 @@ export const loadApiConfig = (
   const credentialVaultKey =
     environment.NEUTRALNEWS_CREDENTIAL_VAULT_KEY?.trim() || undefined;
   const externalServices = resolveExternalServiceConfig(environment, issues);
+  const rssFeeds = resolveRssFeedConfig(environment, issues);
   const trustedProxyAddresses = resolveTrustedProxyAddresses(
     environment,
     issues,
@@ -461,6 +481,7 @@ export const loadApiConfig = (
     allowedOrigins,
     aiProviderStatus: "not_configured",
     externalServices,
+    rssFeeds,
     trustedProxyAddresses,
   };
 };

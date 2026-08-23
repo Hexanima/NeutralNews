@@ -63,6 +63,9 @@ describe("api configuration", () => {
         maxAttempts: 3,
         retryDelayMs: 250,
       },
+      rssFeeds: {
+        maxConcurrency: 3,
+      },
       trustedProxyAddresses: [],
       allowedOrigins: [
         "http://127.0.0.1:3000",
@@ -138,6 +141,15 @@ describe("api configuration", () => {
       retryDelayMs: 100,
     });
   });
+  it("loads configurable RSS feed concurrency", async () => {
+    const environment = await createValidEnvironment({
+      NEUTRALNEWS_RSS_MAX_CONCURRENCY: "5",
+    });
+
+    expect(loadApiConfig(environment).rssFeeds).toEqual({
+      maxConcurrency: 5,
+    });
+  });
 
   it.each([
     ["NEUTRALNEWS_EXTERNAL_TIMEOUT_MS", "0"],
@@ -154,6 +166,18 @@ describe("api configuration", () => {
 
     expect(() => loadApiConfig(environment)).toThrow(variable);
   });
+  it.each(["0", "-1", "1.5", "abc"])(
+    "rejects invalid RSS feed concurrency %s",
+    async (maxConcurrency) => {
+      const environment = await createValidEnvironment({
+        NEUTRALNEWS_RSS_MAX_CONCURRENCY: maxConcurrency,
+      });
+
+      expect(() => loadApiConfig(environment)).toThrow(
+        /NEUTRALNEWS_RSS_MAX_CONCURRENCY/,
+      );
+    },
+  );
 
   it("gives API_PORT priority over PORT", async () => {
     const environment = await createValidEnvironment({
@@ -349,6 +373,7 @@ describe("api configuration", () => {
     expect(envExample).toContain("NEUTRALNEWS_EXTERNAL_TIMEOUT_MS=");
     expect(envExample).toContain("NEUTRALNEWS_EXTERNAL_MAX_ATTEMPTS=");
     expect(envExample).toContain("NEUTRALNEWS_EXTERNAL_RETRY_DELAY_MS=");
+    expect(envExample).toContain("NEUTRALNEWS_RSS_MAX_CONCURRENCY=");
     expect(envExample).toContain("NEUTRALNEWS_TRUSTED_PROXY_ADDRESSES=");
     expect(envExample).toContain("NEUTRALNEWS_ALLOWED_ORIGINS=");
     expect(envExample).toContain("NEUTRALNEWS_ACCESS_PASSWORD_HASH=");

@@ -7,3 +7,4 @@ export * from "./ports/index.js";
 export * from "./testing/index.js";
 export * from "./errors/index.js";
 export * from "./usecases/neutral-news-readiness-usecase.js";
+export * from "./usecases/rss-feed-aggregation-usecase.js";
