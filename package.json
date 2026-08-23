@@ -15,6 +15,7 @@
     "fet": "yarn fe --topological",
     "test": "yarn fe run test --run --clearScreen false",
     "build": "yarn fet run build",
+    "pr-check": "yarn build && yarn test",
     "start": "yarn build && yarn workspace api start"
   }
 }

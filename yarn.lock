@@ -1385,6 +1385,18 @@ __metadata:
   languageName: node
   linkType: hard
 
+"ajv@npm:^6.12.6":
+  version: 6.15.0
+  resolution: "ajv@npm:6.15.0"
+  dependencies:
+    fast-deep-equal: "npm:^3.1.1"
+    fast-json-stable-stringify: "npm:^2.0.0"
+    json-schema-traverse: "npm:^0.4.1"
+    uri-js: "npm:^4.2.2"
+  checksum: 10c0/67966499dd272ecde1c2e467084411132891523d057487587879d39ac04207f4351b7b2324c83198013967fbfa632c1612adc960114a30770fbe07a0773b32c2
+  languageName: node
+  linkType: hard
+
 "ansi-regex@npm:^5.0.1":
   version: 5.0.1
   resolution: "ansi-regex@npm:5.0.1"
@@ -1420,7 +1432,9 @@ __metadata:
   resolution: "api@workspace:apps/api"
   dependencies:
     "@types/node": "npm:^24.6.0"
+    ajv: "npm:^6.12.6"
     app-domain: "workspace:^"
+    openai: "npm:^7.5.0"
     tsx: "npm:^4.20.6"
     typescript: "npm:^5.8.3"
     vitest: "npm:^3.2.4"
@@ -2823,6 +2837,30 @@ __metadata:
   bin:
     nopt: bin/nopt.js
   checksum: 10c0/62e9ea70c7a3eb91d162d2c706b6606c041e4e7b547cbbb48f8b3695af457dd6479904d7ace600856bf923dd8d1ed0696f06195c8c20f02ac87c1da0e1d315ef
+  languageName: node
+  linkType: hard
+
+"openai@npm:^7.5.0":
+  version: 7.5.0
+  resolution: "openai@npm:7.5.0"
+  peerDependencies:
+    "@aws-sdk/credential-provider-node": ">=3.972.0 <4"
+    "@smithy/hash-node": ">=4.3.0 <5"
+    "@smithy/signature-v4": ">=5.4.0 <6"
+    ws: ^8.18.0
+    zod: ^3.25 || ^4.0
+  peerDependenciesMeta:
+    "@aws-sdk/credential-provider-node":
+      optional: true
+    "@smithy/hash-node":
+      optional: true
+    "@smithy/signature-v4":
+      optional: true
+    ws:
+      optional: true
+    zod:
+      optional: true
+  checksum: 10c0/b16541492ea03cdc1646db9ae2aaea44571fb779708704108ca94256efa9a65d9ca4044723d1e4f579653f5a6ad84724d5bc1079b9572512820d1668495dc07c
   languageName: node
   linkType: hard
 

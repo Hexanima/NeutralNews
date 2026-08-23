@@ -22,11 +22,29 @@ import {
   type ApiConfig,
 } from "./config.js";
 import {
+  handleAuthenticationRequest,
+  handleLogoutRequest,
+  handleSessionGuard,
+} from "./authentication-endpoints.js";
+import {
+  handleConfigurationRequest,
+  type ConfigurationRequestOptions,
+} from "./configuration-endpoints.js";
+import {
+  handleAiConfigurationRequest,
+  type AiConfigurationRequestOptions,
+} from "./ai-configuration-endpoints.js";
+import {
   executeExternalOperation,
   type ExecuteExternalOperationOptions,
   type ExternalServiceError,
   type ExternalServicePolicy,
 } from "./external-service-policy.js";
+import {
+  createLoginAttemptLimiter,
+  type LoginAttemptLimiter,
+} from "./login-attempt-limiter.js";
+import { handleOriginGuard } from "./origin-guard.js";
 export { ConfigurationError, loadApiConfig } from "./config.js";
 export * from "./credential-vault.js";
 
@@ -57,6 +75,9 @@ export interface AppOptions {
   staticRoot?: string;
   config?: ApiConfig;
   healthResponseFactory?: HealthResponseFactory;
+  configurationRequestOptions?: ConfigurationRequestOptions | undefined;
+  aiConfigurationRequestOptions?: AiConfigurationRequestOptions | undefined;
+  loginAttemptLimiter?: LoginAttemptLimiter;
 }
 
 type RequestEventSource =
@@ -274,6 +295,48 @@ export const requestHandler = async (
     return;
   }
 
+  if (
+    await handleAuthenticationRequest(request, response, options.config, {
+      loginAttemptLimiter: options.loginAttemptLimiter,
+    })
+  ) {
+    return;
+  }
+
+  if (handleSessionGuard(request, response, options.config)) {
+    return;
+  }
+
+
+  if (handleOriginGuard(request, response, options.config!)) {
+    return;
+  }
+  if (handleLogoutRequest(request, response, options.config)) {
+    return;
+  }
+
+  if (
+    await handleAiConfigurationRequest(
+      request,
+      response,
+      options.config,
+      options.aiConfigurationRequestOptions,
+    )
+  ) {
+    return;
+  }
+
+  if (
+    await handleConfigurationRequest(
+      request,
+      response,
+      options.config,
+      options.configurationRequestOptions,
+    )
+  ) {
+    return;
+  }
+
   if (request.url?.startsWith("/api/")) {
     sendJson(response, 404, { error: "NotFound" });
     return;
@@ -282,9 +345,15 @@ export const requestHandler = async (
   await serveFrontend(request, response, options.staticRoot ?? defaultStaticRoot);
 };
 
-export const createApp = (options: AppOptions = {}) =>
-  createServer((request, response) => {
-    requestHandler(request, response, options).catch(() => {
+export const createApp = (options: AppOptions = {}) => {
+  const loginAttemptLimiter =
+    options.loginAttemptLimiter ?? createLoginAttemptLimiter();
+
+  return createServer((request, response) => {
+    requestHandler(request, response, {
+      ...options,
+      loginAttemptLimiter,
+    }).catch(() => {
       if (!response.headersSent) {
         sendJson(response, 500, { error: "InternalServerError" });
         return;
@@ -293,6 +362,7 @@ export const createApp = (options: AppOptions = {}) =>
       response.end();
     });
   });
+};
 
 export const resolveApiHost = (
   environment: NodeJS.ProcessEnv = process.env,

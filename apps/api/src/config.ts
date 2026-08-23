@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
+import { isIP } from "node:net";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -19,6 +20,8 @@ export interface ApiConfig {
   credentialVaultKey?: string;
   aiProviderStatus: AiProviderStatus;
   externalServices: ExternalServiceConfig;
+  trustedProxyAddresses: string[];
+  allowedOrigins: string[];
 }
 
 export interface ExternalServiceConfig {
@@ -44,9 +47,8 @@ const defaultTimeZone = "America/Argentina/Buenos_Aires";
 const defaultExternalTimeoutMs = 15_000;
 const defaultExternalMaxAttempts = 3;
 const defaultExternalRetryDelayMs = 250;
-const bcryptHashPattern = /^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/;
 const argon2HashPattern =
-  /^\$argon2(?:id|i)\$v=\d+\$m=\d+,t=\d+,p=\d+\$[A-Za-z0-9+/]+={0,2}\$[A-Za-z0-9+/]+={0,2}$/;
+  /^\$argon2id\$v=19\$m=\d+,t=\d+,p=\d+\$[A-Za-z0-9+/]+={0,2}\$[A-Za-z0-9+/]+={0,2}$/;
 const minimumSessionSecretLength = 32;
 const defaultEnvironmentFilePath = fileURLToPath(
   new URL("../../../.env", import.meta.url),
@@ -288,13 +290,10 @@ const resolveAccessPasswordHash = (
     return "";
   }
 
-  if (
-    !bcryptHashPattern.test(accessPasswordHash) &&
-    !argon2HashPattern.test(accessPasswordHash)
-  ) {
+  if (!argon2HashPattern.test(accessPasswordHash)) {
     issues.push({
       variable: "NEUTRALNEWS_ACCESS_PASSWORD_HASH",
-      message: "must be a bcrypt or Argon2 hash",
+      message: "must be an Argon2id hash",
     });
   }
 
@@ -352,6 +351,82 @@ const resolveExternalServiceConfig = (
   ),
 });
 
+const resolveTrustedProxyAddresses = (
+  environment: NodeJS.ProcessEnv,
+  issues: ConfigurationIssue[],
+): string[] => {
+  const rawAddresses = environment.NEUTRALNEWS_TRUSTED_PROXY_ADDRESSES?.trim();
+
+  if (rawAddresses === undefined || rawAddresses === "") {
+    return [];
+  }
+
+  const addresses = rawAddresses
+    .split(",")
+    .map((address) => address.trim())
+    .filter((address) => address !== "");
+
+  if (addresses.some((address) => isIP(address) === 0)) {
+    issues.push({
+      variable: "NEUTRALNEWS_TRUSTED_PROXY_ADDRESSES",
+      message: "must contain only IP addresses",
+    });
+  }
+
+  return addresses;
+};
+
+const resolveAllowedOrigins = (
+  environment: NodeJS.ProcessEnv,
+  host: string,
+  port: number,
+  issues: ConfigurationIssue[],
+): string[] => {
+  const rawOrigins = environment.NEUTRALNEWS_ALLOWED_ORIGINS?.trim();
+
+  if (rawOrigins === undefined || rawOrigins === "") {
+    if (host !== "127.0.0.1" && host !== "localhost") {
+      issues.push({
+        variable: "NEUTRALNEWS_ALLOWED_ORIGINS",
+        message: "is required when API_HOST is not loopback",
+      });
+      return [];
+    }
+
+    const webPort = environment.WEB_PORT?.trim() || "5173";
+
+    return [
+      `http://127.0.0.1:${port}`,
+      `http://localhost:${port}`,
+      `http://127.0.0.1:${webPort}`,
+      `http://localhost:${webPort}`,
+    ];
+  }
+
+  const origins = rawOrigins.split(",").map((origin) => origin.trim());
+
+  if (
+    origins.some((origin) => {
+      try {
+        const parsed = new URL(origin);
+        return (
+          (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+          parsed.origin !== origin
+        );
+      } catch {
+        return true;
+      }
+    })
+  ) {
+    issues.push({
+      variable: "NEUTRALNEWS_ALLOWED_ORIGINS",
+      message: "must contain exact HTTP or HTTPS origins",
+    });
+  }
+
+  return origins;
+};
+
 export const loadApiConfig = (
   environment: NodeJS.ProcessEnv = process.env,
 ): ApiConfig => {
@@ -365,6 +440,11 @@ export const loadApiConfig = (
   const credentialVaultKey =
     environment.NEUTRALNEWS_CREDENTIAL_VAULT_KEY?.trim() || undefined;
   const externalServices = resolveExternalServiceConfig(environment, issues);
+  const trustedProxyAddresses = resolveTrustedProxyAddresses(
+    environment,
+    issues,
+  );
+  const allowedOrigins = resolveAllowedOrigins(environment, host, port, issues);
 
   if (issues.length > 0) {
     throw new ConfigurationError(issues);
@@ -378,7 +458,9 @@ export const loadApiConfig = (
     accessPasswordHash,
     sessionSecret,
     credentialVaultKey,
+    allowedOrigins,
     aiProviderStatus: "not_configured",
     externalServices,
+    trustedProxyAddresses,
   };
 };

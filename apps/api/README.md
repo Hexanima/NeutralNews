@@ -11,6 +11,8 @@ Variables:
 - `API_PORT`: puerto principal.
 - `PORT`: fallback si `API_PORT` no existe.
 - `API_HOST`: host explicito de escucha; por defecto se usa `127.0.0.1`.
+- `NEUTRALNEWS_ALLOWED_ORIGINS`: lista separada por comas de orígenes HTTP(S) exactos para mutaciones autenticadas; es obligatoria fuera de loopback.
+- Login admite cinco fallos por ventana móvil de 15 minutos y las mutaciones autenticadas exigen `Origin` permitido.
 
 ## Comandos
 

@@ -14,9 +14,11 @@ import {
 const temporaryDirectories: string[] = [];
 
 const validPasswordHash =
-  "$2b$12$C6UzMDM.H6dfI/f/IKcEeO7FDgWz8WUyZVJXl2DrT0S6QYzR2v9Da";
+  "$argon2id$v=19$m=32,t=2,p=2$MDEyMzQ1Njc4OWFiY2RlZg==$DFYj7N4xFFUiI8oxwK/k/skRZiCNIGR5xOGTpdhlPKs=";
 const validArgon2Hash =
   "$argon2id$v=19$m=65536,t=3,p=4$c29tZXNhbHQ$MTIzNDU2Nzg5MGFiY2RlZg";
+const validParallelismOneArgon2Hash =
+  "$argon2id$v=19$m=32,t=2,p=1$MDEyMzQ1Njc4OWFiY2RlZg==$3tvCwdd7MUuB81rsi89hLiVmvfk5BcFxVCAxjSr0ZgA=";
 const validSessionSecret = "0123456789abcdef0123456789abcdef";
 
 const createDataDirectory = async () => {
@@ -61,6 +63,13 @@ describe("api configuration", () => {
         maxAttempts: 3,
         retryDelayMs: 250,
       },
+      trustedProxyAddresses: [],
+      allowedOrigins: [
+        "http://127.0.0.1:3000",
+        "http://localhost:3000",
+        "http://127.0.0.1:5173",
+        "http://localhost:5173",
+      ],
     });
   });
 
@@ -77,6 +86,7 @@ describe("api configuration", () => {
         `NEUTRALNEWS_SESSION_SECRET=${validSessionSecret}`,
         "API_PORT=4100",
         "export NEUTRALNEWS_EXTERNAL_MAX_ATTEMPTS=2",
+        "NEUTRALNEWS_TRUSTED_PROXY_ADDRESSES=127.0.0.1, ::1",
         "NEUTRALNEWS_CREDENTIAL_VAULT_KEY='quoted # vault key' # local note",
       ].join("\n"),
     );
@@ -89,7 +99,30 @@ describe("api configuration", () => {
     expect(config.accessPasswordHash).toBe(validPasswordHash);
     expect(config.sessionSecret).toBe(validSessionSecret);
     expect(config.externalServices.maxAttempts).toBe(2);
+    expect(config.trustedProxyAddresses).toEqual(["127.0.0.1", "::1"]);
     expect(config.credentialVaultKey).toBe("quoted # vault key");
+  });
+
+  it("loads trusted proxy addresses when explicitly configured", async () => {
+    const environment = await createValidEnvironment({
+      NEUTRALNEWS_TRUSTED_PROXY_ADDRESSES: "127.0.0.1,::1,::ffff:127.0.0.1",
+    });
+
+    expect(loadApiConfig(environment).trustedProxyAddresses).toEqual([
+      "127.0.0.1",
+      "::1",
+      "::ffff:127.0.0.1",
+    ]);
+  });
+
+  it("rejects invalid trusted proxy addresses", async () => {
+    const environment = await createValidEnvironment({
+      NEUTRALNEWS_TRUSTED_PROXY_ADDRESSES: "127.0.0.1,example.test",
+    });
+
+    expect(() => loadApiConfig(environment)).toThrow(
+      /NEUTRALNEWS_TRUSTED_PROXY_ADDRESSES/,
+    );
   });
 
   it("loads configurable external service policy values", async () => {
@@ -208,7 +241,24 @@ describe("api configuration", () => {
     expect(loadApiConfig(environment).accessPasswordHash).toBe(validArgon2Hash);
   });
 
-  it.each(["$argon2id$", "$argon2i$", "$argon2id$not-enough"])(
+  it("accepts a valid Argon2id access password hash with parallelism one", async () => {
+    const environment = await createValidEnvironment({
+      NEUTRALNEWS_ACCESS_PASSWORD_HASH: validParallelismOneArgon2Hash,
+    });
+
+    expect(loadApiConfig(environment).accessPasswordHash).toBe(
+      validParallelismOneArgon2Hash,
+    );
+  });
+
+  it.each([
+    "$2b$12$C6UzMDM.H6dfI/f/IKcEeO7FDgWz8WUyZVJXl2DrT0S6QYzR2v9Da",
+    "$argon2i$v=19$m=32,t=2,p=2$MDEyMzQ1Njc4OWFiY2RlZg==$DFYj7N4xFFUiI8oxwK/k/skRZiCNIGR5xOGTpdhlPKs=",
+    "$argon2d$v=19$m=32,t=2,p=2$MDEyMzQ1Njc4OWFiY2RlZg==$DFYj7N4xFFUiI8oxwK/k/skRZiCNIGR5xOGTpdhlPKs=",
+    "$argon2id$v=16$m=32,t=2,p=2$MDEyMzQ1Njc4OWFiY2RlZg==$DFYj7N4xFFUiI8oxwK/k/skRZiCNIGR5xOGTpdhlPKs=",
+    "$argon2id$",
+    "$argon2id$not-enough",
+  ])(
     "rejects malformed Argon2 access password hash %s",
     async (accessPasswordHash) => {
       const environment = await createValidEnvironment({
@@ -299,6 +349,8 @@ describe("api configuration", () => {
     expect(envExample).toContain("NEUTRALNEWS_EXTERNAL_TIMEOUT_MS=");
     expect(envExample).toContain("NEUTRALNEWS_EXTERNAL_MAX_ATTEMPTS=");
     expect(envExample).toContain("NEUTRALNEWS_EXTERNAL_RETRY_DELAY_MS=");
+    expect(envExample).toContain("NEUTRALNEWS_TRUSTED_PROXY_ADDRESSES=");
+    expect(envExample).toContain("NEUTRALNEWS_ALLOWED_ORIGINS=");
     expect(envExample).toContain("NEUTRALNEWS_ACCESS_PASSWORD_HASH=");
     expect(envExample).toContain("NEUTRALNEWS_SESSION_SECRET=");
     expect(envExample).toContain("NEUTRALNEWS_CREDENTIAL_VAULT_KEY=");
