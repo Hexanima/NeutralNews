@@ -34,6 +34,7 @@ const model: AiModelDefinition = {
   remoteModelId: "gpt-5-mini",
   capabilities: ["structured_outputs", "web_search", "reasoning_medium"],
   compatibilityStatus: "compatible",
+  availabilityStatus: "unknown",
 };
 
 describe("AI model definitions", () => {

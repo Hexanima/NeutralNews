@@ -25,6 +25,7 @@ export const initialAiProviderCatalogSnapshot = {
       remoteModelId: "gpt-5.6-terra",
       capabilities: ["structured_outputs", "web_search", "reasoning_high"],
       compatibilityStatus: "compatible",
+      availabilityStatus: "unknown",
     },
     {
       providerId: "openai",
@@ -32,6 +33,7 @@ export const initialAiProviderCatalogSnapshot = {
       remoteModelId: "gpt-5.6-sol",
       capabilities: ["structured_outputs", "web_search", "reasoning_medium"],
       compatibilityStatus: "compatible",
+      availabilityStatus: "unknown",
     },
     {
       providerId: "openai",
@@ -39,6 +41,7 @@ export const initialAiProviderCatalogSnapshot = {
       remoteModelId: "gpt-5.6-luna",
       capabilities: ["structured_outputs", "web_search", "reasoning_low"],
       compatibilityStatus: "compatible",
+      availabilityStatus: "unknown",
     },
   ],
 } satisfies AiProviderCatalogSnapshot;

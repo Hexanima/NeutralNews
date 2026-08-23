@@ -69,6 +69,7 @@ describe("AI provider effective configuration", () => {
       credentialReferences: [],
       providerOverrides: [],
       modelOverrides: [],
+      modelSynchronizations: [],
     });
     expect(configuration.activeSelection).toEqual({
       providerId: "custom",
@@ -164,6 +165,7 @@ describe("AI provider effective configuration", () => {
       credentialReferences: [],
       providerOverrides: [],
       modelOverrides: [],
+      modelSynchronizations: [],
     });
 
     expect(snapshot.ok).toBe(true);

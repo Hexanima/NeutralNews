@@ -5,12 +5,21 @@ import type {
   AiModelSelection,
   AiProviderDefinition,
 } from "./ai-model-definition.js";
-import { validateAiModelSelection } from "./ai-model-definition.js";
+import {
+  AiModelIncompatibleError,
+  AiModelNotFoundError,
+  AiProviderNotFoundError,
+} from "./ai-model-definition.js";
 import {
   createAiProviderCatalog,
   type AiProviderCatalogSnapshot,
   type InvalidAiProviderCatalogError,
 } from "./ai-provider-catalog.js";
+import {
+  synchronizeAiProviderModels,
+  type AiModelSynchronizationSnapshot,
+  type AiRemoteModelSnapshot,
+} from "./ai-model-synchronization.js";
 
 export const aiProviderConfigurationSchemaVersion = 1;
 export const initialAiProviderConfigurationVersion = 1;
@@ -28,6 +37,7 @@ export interface AiProviderConfigurationSnapshot {
   readonly credentialReferences: readonly AiCredentialReferenceSnapshot[];
   readonly providerOverrides: readonly AiProviderDefinition[];
   readonly modelOverrides: readonly AiModelDefinition[];
+  readonly modelSynchronizations: readonly AiModelSynchronizationSnapshot[];
 }
 
 export interface EffectiveAiProviderConfiguration {
@@ -39,6 +49,7 @@ export interface EffectiveAiProviderConfiguration {
   readonly credentialReferences: readonly AiCredentialReferenceSnapshot[];
   readonly providerOverrides: readonly AiProviderDefinition[];
   readonly modelOverrides: readonly AiModelDefinition[];
+  readonly modelSynchronizations: readonly AiModelSynchronizationSnapshot[];
 }
 
 export type AiProviderConfigurationField =
@@ -49,6 +60,9 @@ export type AiProviderConfigurationField =
   | "credentialReference"
   | "providerOverrides"
   | "modelOverrides"
+  | "modelSynchronizations"
+  | "modelSynchronization"
+  | "remoteModel"
   | "compatibilityStatus";
 
 export class InvalidAiProviderConfigurationValueError extends TaggedError<"InvalidAiProviderConfigurationValue"> {
@@ -124,6 +138,53 @@ const createCredentialReference = (
   });
 };
 
+const createRemoteModel = (
+  value: unknown,
+): Result<AiRemoteModelSnapshot, InvalidAiProviderConfigurationValueError> => {
+  if (
+    !isRecord(value) ||
+    !isNonEmptyString(value.id) ||
+    (value.createdAt !== undefined && typeof value.createdAt !== "string") ||
+    (value.ownedBy !== undefined && typeof value.ownedBy !== "string")
+  ) {
+    return err(invalidValue("remoteModel", value));
+  }
+
+  return ok({
+    id: value.id,
+    ...(value.createdAt === undefined ? {} : { createdAt: value.createdAt as AiRemoteModelSnapshot["createdAt"] }),
+    ...(value.ownedBy === undefined ? {} : { ownedBy: value.ownedBy }),
+  });
+};
+
+const createModelSynchronization = (
+  value: unknown,
+): Result<AiModelSynchronizationSnapshot, InvalidAiProviderConfigurationValueError> => {
+  if (
+    !isRecord(value) ||
+    !isNonEmptyString(value.providerId) ||
+    !isNonEmptyString(value.syncedAt) ||
+    !Array.isArray(value.remoteModels)
+  ) {
+    return err(invalidValue("modelSynchronization", value));
+  }
+
+  const remoteModels = value.remoteModels.map(createRemoteModel);
+  const invalidRemoteModel = remoteModels.find((remoteModel) => !remoteModel.ok);
+
+  if (invalidRemoteModel !== undefined && !invalidRemoteModel.ok) {
+    return invalidRemoteModel;
+  }
+
+  return ok({
+    providerId: value.providerId,
+    syncedAt: value.syncedAt as AiModelSynchronizationSnapshot["syncedAt"],
+    remoteModels: remoteModels.flatMap((remoteModel) =>
+      remoteModel.ok ? [remoteModel.value] : [],
+    ),
+  });
+};
+
 const mergeProviders = (
   providers: readonly AiProviderDefinition[],
   overrides: readonly AiProviderDefinition[],
@@ -154,6 +215,21 @@ const mergeModels = (
     ...overrides.filter((model) => !defaultIds.has(modelKey(model))),
   ];
 };
+
+const applyModelSynchronizations = (
+  models: readonly AiModelDefinition[],
+  synchronizations: readonly AiModelSynchronizationSnapshot[],
+): readonly AiModelDefinition[] =>
+  synchronizations.reduce(
+    (currentModels, synchronization) =>
+      synchronizeAiProviderModels({
+        providerId: synchronization.providerId,
+        syncedAt: synchronization.syncedAt,
+        models: currentModels,
+        remoteModels: synchronization.remoteModels,
+      }).models,
+    models,
+  );
 
 const catalogForOverrideValidation = (
   providerOverrides: readonly AiProviderDefinition[],
@@ -191,14 +267,30 @@ const validateEffectiveSelection = (
   models: readonly AiModelDefinition[],
   selection: AiModelSelection,
 ): InvalidAiProviderConfigurationValueError | null => {
-  const result = validateAiModelSelection({
-    providers,
-    models,
-    selection,
-    requiredCapabilities: [],
-  });
+  const provider = providers.find(({ id }) => id === selection.providerId);
 
-  return result.ok ? null : toSelectionError(result.error.type, selection);
+  if (provider === undefined) {
+    return toSelectionError(new AiProviderNotFoundError(selection.providerId).type, selection);
+  }
+
+  const model = models.find(
+    ({ providerId, modelId }) =>
+      providerId === selection.providerId && modelId === selection.modelId,
+  );
+
+  if (model === undefined) {
+    return toSelectionError(
+      new AiModelNotFoundError(selection.providerId, selection.modelId).type,
+      selection,
+    );
+  }
+
+  return model.compatibilityStatus === "compatible"
+    ? null
+    : toSelectionError(
+        new AiModelIncompatibleError(selection.providerId, selection.modelId).type,
+        selection,
+      );
 };
 
 const defaultSelectionFromCatalog = (
@@ -239,6 +331,11 @@ export const createAiProviderConfigurationSnapshot = (
   const modelOverrides = Array.isArray(snapshot.modelOverrides)
     ? (snapshot.modelOverrides as readonly AiModelDefinition[])
     : undefined;
+  const modelSynchronizations = snapshot.modelSynchronizations === undefined
+    ? []
+    : Array.isArray(snapshot.modelSynchronizations)
+      ? snapshot.modelSynchronizations.map(createModelSynchronization)
+      : undefined;
   const overrideCatalog =
     providerOverrides !== undefined && modelOverrides !== undefined
       ? createAiProviderCatalog(
@@ -261,6 +358,11 @@ export const createAiProviderConfigurationSnapshot = (
     ...(modelOverrides === undefined
       ? [invalidValue("modelOverrides", snapshot.modelOverrides)]
       : []),
+    ...(modelSynchronizations === undefined
+      ? [invalidValue("modelSynchronizations", snapshot.modelSynchronizations)]
+      : modelSynchronizations.flatMap((synchronization) =>
+          synchronization.ok ? [] : [synchronization.error],
+        )),
     ...(overrideCatalog !== undefined && !overrideCatalog.ok ? [overrideCatalog.error] : []),
   ];
 
@@ -280,6 +382,10 @@ export const createAiProviderConfigurationSnapshot = (
       credentialReferences?.flatMap((reference) => (reference.ok ? [reference.value] : [])) ?? [],
     providerOverrides: providerOverrides ?? [],
     modelOverrides: modelOverrides ?? [],
+    modelSynchronizations:
+      modelSynchronizations?.flatMap((synchronization) =>
+        synchronization.ok ? [synchronization.value] : [],
+      ) ?? [],
   });
 };
 
@@ -292,6 +398,7 @@ export const createDefaultAiProviderConfigurationSnapshot = (
   credentialReferences: [],
   providerOverrides: [],
   modelOverrides: [],
+  modelSynchronizations: [],
 });
 
 export const createEffectiveAiProviderConfiguration = (
@@ -302,7 +409,10 @@ export const createEffectiveAiProviderConfiguration = (
   const mergedCatalogSnapshot = {
     schemaVersion: catalogSnapshot.schemaVersion,
     providers: mergeProviders(catalogSnapshot.providers, snapshot.providerOverrides),
-    models: mergeModels(catalogSnapshot.models, snapshot.modelOverrides),
+    models: applyModelSynchronizations(
+      mergeModels(catalogSnapshot.models, snapshot.modelOverrides),
+      snapshot.modelSynchronizations ?? [],
+    ),
   };
   const catalog = createAiProviderCatalog(mergedCatalogSnapshot);
 
@@ -329,5 +439,6 @@ export const createEffectiveAiProviderConfiguration = (
     credentialReferences: snapshot.credentialReferences,
     providerOverrides: snapshot.providerOverrides,
     modelOverrides: snapshot.modelOverrides,
+    modelSynchronizations: snapshot.modelSynchronizations ?? [],
   });
 };
