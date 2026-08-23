@@ -100,6 +100,44 @@ describe("AI model availability synchronization", () => {
     });
   });
 
+  it("keeps an unknown remote model visible when its id collides with a local model id", () => {
+    const result = synchronizeAiProviderModels({
+      providerId: "openai",
+      syncedAt,
+      models: [
+        {
+          providerId: "openai",
+          modelId: "gpt-local",
+          remoteModelId: "gpt-remote",
+          capabilities: ["structured_outputs"],
+          compatibilityStatus: "compatible",
+          availabilityStatus: "unknown",
+        },
+      ],
+      remoteModels: [{ id: "gpt-local" }],
+    });
+
+    expect(
+      result.models.find((model) => model.modelId === "gpt-local"),
+    ).toMatchObject({
+      remoteModelId: "gpt-remote",
+      availabilityStatus: "unavailable",
+    });
+    expect(
+      result.models.find((model) => model.remoteModelId === "gpt-local"),
+    ).toEqual({
+      providerId: "openai",
+      modelId: "remote:gpt-local",
+      remoteModelId: "gpt-local",
+      capabilities: [],
+      compatibilityStatus: "unknown",
+      availabilityStatus: "available",
+    });
+    expect(
+      new Set(result.models.map((model) => `${model.providerId}/${model.modelId}`))
+        .size,
+    ).toBe(result.models.length);
+  });
   it("rejects selections for unavailable and unmapped remote models", () => {
     const synchronized = synchronizeAiProviderModels({
       providerId: "openai",

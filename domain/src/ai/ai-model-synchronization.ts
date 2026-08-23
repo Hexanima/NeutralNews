@@ -50,22 +50,41 @@ export const synchronizeAiProviderModels = ({
             : "unavailable",
         } satisfies AiModelDefinition,
   );
-  const knownModelKeys = new Set(synchronizedKnownModels.map(modelKey));
+  const usedModelKeys = new Set(synchronizedKnownModels.map(modelKey));
+  const seenUnknownRemoteIds = new Set<string>();
+  const uniqueUnknownModelId = (remoteModelId: string): string => {
+    const preferredModelIds = [remoteModelId, `remote:${remoteModelId}`];
+
+    for (const candidate of preferredModelIds) {
+      if (!usedModelKeys.has(`${providerId}/${candidate}`)) {
+        return candidate;
+      }
+    }
+
+    let suffix = 2;
+    while (usedModelKeys.has(`${providerId}/remote:${remoteModelId}:${suffix}`)) {
+      suffix += 1;
+    }
+
+    return `remote:${remoteModelId}:${suffix}`;
+  };
   const unknownRemoteModels = remoteModels.flatMap((remoteModel) => {
-    if (knownRemoteIds.has(remoteModel.id)) {
+    if (knownRemoteIds.has(remoteModel.id) || seenUnknownRemoteIds.has(remoteModel.id)) {
       return [];
     }
 
+    seenUnknownRemoteIds.add(remoteModel.id);
     const model: AiModelDefinition = {
       providerId,
-      modelId: remoteModel.id,
+      modelId: uniqueUnknownModelId(remoteModel.id),
       remoteModelId: remoteModel.id,
       capabilities: [],
       compatibilityStatus: "unknown",
       availabilityStatus: "available",
     };
+    usedModelKeys.add(modelKey(model));
 
-    return knownModelKeys.has(modelKey(model)) ? [] : [model];
+    return [model];
   });
 
   return {
