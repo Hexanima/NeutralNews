@@ -3,6 +3,7 @@ import {
   type AiGenerationPort,
   type EffectiveAiProviderConfiguration,
   type IsoDateTimeString,
+  type PortError,
   type Result,
 } from "app-domain";
 
@@ -11,14 +12,8 @@ import type {
   JsonAiProviderConfigurationRepositoryError,
 } from "./ai-provider-configuration-repository.js";
 
-export interface AiModelSyncWarning {
-  readonly code: "AiModelSyncFailed";
-  readonly providerId: string;
-}
-
 export interface SyncAiProviderModelsResult {
   readonly configuration: EffectiveAiProviderConfiguration;
-  readonly warning?: AiModelSyncWarning | undefined;
 }
 
 export interface SyncAiProviderModelsInput {
@@ -39,7 +34,10 @@ export const syncAiProviderModels = async ({
   aiProvider,
   now = defaultNow,
 }: SyncAiProviderModelsInput): Promise<
-  Result<SyncAiProviderModelsResult, JsonAiProviderConfigurationRepositoryError>
+  Result<
+    SyncAiProviderModelsResult,
+    JsonAiProviderConfigurationRepositoryError | PortError
+  >
 > => {
   const currentConfiguration = await configurationRepository.getEffectiveConfiguration();
 
@@ -50,10 +48,7 @@ export const syncAiProviderModels = async ({
   const remoteModels = await aiProvider.listAccessibleModels({ providerId });
 
   if (!remoteModels.ok) {
-    return ok({
-      configuration: currentConfiguration.value,
-      warning: { code: "AiModelSyncFailed", providerId },
-    });
+    return remoteModels;
   }
 
   const saved = await configurationRepository.saveModelSynchronization({

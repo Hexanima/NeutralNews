@@ -107,10 +107,12 @@ describe("AI provider model synchronization service", () => {
       now: () => new Date(syncedAt),
     });
     const storedBeforeFailure = await readFile(join(directory, configPath), "utf8");
+    const remoteError = new ExternalPortError(
+      "openai.models.list",
+      "TransientFailure",
+    );
     const failingProvider = createFakeAiGenerationPort({
-      listAccessibleModelsResult: err(
-        new ExternalPortError("openai.models.list", "TransientFailure"),
-      ),
+      listAccessibleModelsResult: err(remoteError),
     });
 
     const result = await syncAiProviderModels({
@@ -120,23 +122,13 @@ describe("AI provider model synchronization service", () => {
       now: () => new Date("2026-08-22T19:00:00.000Z"),
     });
 
-    expect(result.ok).toBe(true);
-    if (!isOk(result)) {
-      throw result.error;
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      throw new Error("Expected model synchronization to fail");
     }
-    expect(result.value.warning).toEqual({
-      code: "AiModelSyncFailed",
-      providerId: "openai",
-    });
+    expect(result.error).toBe(remoteError);
     expect(await readFile(join(directory, configPath), "utf8")).toBe(
       storedBeforeFailure,
     );
-    expect(result.value.configuration.modelSynchronizations).toEqual([
-      {
-        providerId: "openai",
-        syncedAt,
-        remoteModels: [{ id: "gpt-5.6-terra" }],
-      },
-    ]);
   });
 });

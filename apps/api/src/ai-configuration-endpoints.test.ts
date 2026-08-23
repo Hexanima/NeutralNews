@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { AddressInfo } from "node:net";
 
 import {
+  AiCredentialUnavailableError,
   createFakeAiGenerationPort,
   err,
   ExternalPortError,
@@ -719,6 +720,52 @@ describe("AI provider configuration HTTP endpoints", () => {
     expect(invalidations).toBe(1);
   });
 
+  it("does not persist an active selection when feed invalidation fails", async () => {
+    const environment = await createValidEnvironment();
+    const credentialVault = createInMemoryCredentialVault();
+    const aiProvider = createFakeAiGenerationPort({
+      remoteModels: [{ id: "gpt-5.6-terra" }, { id: "gpt-5.6-sol" }],
+    });
+    await fetchFromApp(
+      "/api/configuration/ai/providers/openai/credentials",
+      environment,
+      {
+        method: "PUT",
+        json: { credentialValues: [{ fieldId: "api_key", value: apiKey }] },
+      },
+      { credentialVault, aiProvider },
+    );
+    await fetchFromApp(
+      "/api/configuration/ai/providers/openai/models/sync",
+      environment,
+      { method: "POST" },
+      { credentialVault, aiProvider },
+    );
+
+    const response = await fetchFromApp(
+      "/api/configuration/ai/active-selection",
+      environment,
+      {
+        method: "PUT",
+        json: { providerId: "openai", modelId: "gpt-5.6-sol" },
+      },
+      {
+        credentialVault,
+        aiProvider,
+        clearFeedCache: async () => {
+          throw new Error("feed invalidation failed");
+        },
+      },
+    );
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ error: "InternalServerError" });
+    expect(await readStoredConfiguration(environment.NEUTRALNEWS_DATA_DIR!))
+      .toMatchObject({
+        configurationVersion: 3,
+        activeSelection: { providerId: "openai", modelId: "gpt-5.6-terra" },
+      });
+  });
   it("returns sanitized remote errors when testing credentials and syncing models", async () => {
     const environment = await createValidEnvironment();
     const credentialVault = createInMemoryCredentialVault();
@@ -767,9 +814,51 @@ describe("AI provider configuration HTTP endpoints", () => {
       },
     });
     expect(testedBody).not.toContain(apiKey);
-    expect(synced.status).toBe(200);
-    expect(await synced.json()).toMatchObject({
-      warnings: [{ code: "AiModelSyncFailed", providerId: "openai" }],
+    expect(synced.status).toBe(502);
+    const syncedBody = await synced.text();
+    expect(JSON.parse(syncedBody)).toEqual({
+      error: {
+        code: "AiProviderRemoteError",
+        providerId: "openai",
+        category: "TransientFailure",
+        statusCode: 503,
+      },
+    });
+    expect(syncedBody).not.toContain(apiKey);
+  });
+
+  it("returns credential unavailable when model sync cannot read provider credentials", async () => {
+    const environment = await createValidEnvironment();
+    const credentialVault = createInMemoryCredentialVault();
+    const aiProvider = createFakeAiGenerationPort({
+      listAccessibleModelsResult: err(
+        new AiCredentialUnavailableError("openai", "api_key"),
+      ),
+    });
+    await fetchFromApp(
+      "/api/configuration/ai/providers/openai/credentials",
+      environment,
+      {
+        method: "PUT",
+        json: { credentialValues: [{ fieldId: "api_key", value: apiKey }] },
+      },
+      { credentialVault, aiProvider },
+    );
+
+    const response = await fetchFromApp(
+      "/api/configuration/ai/providers/openai/models/sync",
+      environment,
+      { method: "POST" },
+      { credentialVault, aiProvider },
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: {
+        code: "AiCredentialUnavailable",
+        providerId: "openai",
+        fieldId: "api_key",
+      },
     });
   });
 });

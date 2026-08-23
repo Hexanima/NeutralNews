@@ -417,6 +417,17 @@ describe("api app", () => {
 
     expect(response.status).toBe(500);
     expect(await response.json()).toEqual({ error: "InternalServerError" });
+    expect(
+      JSON.parse(
+        await readFile(
+          join(dataDirectory, "configuration", "ai-providers.json"),
+          "utf8",
+        ),
+      ),
+    ).toMatchObject({
+      configurationVersion: 1,
+      activeSelection: { providerId: "openai", modelId: "gpt-5.6-terra" },
+    });
   });
   it("rejects authenticated mutations without an origin", async () => {
     const staticRoot = await createStaticRoot();

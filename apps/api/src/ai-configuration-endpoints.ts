@@ -333,6 +333,26 @@ const parseProviderActionPath = (
   return null;
 };
 
+const portErrorTypeNames = new Set([
+  "PortCancelled",
+  "PortLimitExceeded",
+  "ExternalPortError",
+  "AiCapabilityUnavailable",
+  "AiModelIncompatible",
+  "AiModelNotFound",
+  "AiModelUnavailable",
+  "AiProviderNotFound",
+  "AiCredentialUnavailable",
+  "AiProviderUnsupported",
+  "AiProviderRejected",
+  "AiInvalidStructuredOutput",
+]);
+
+const isPortError = (error: unknown): error is PortError =>
+  isRecord(error) &&
+  typeof error.type === "string" &&
+  portErrorTypeNames.has(error.type);
+
 const mapPortErrorStatus = (error: PortError): number => {
   if (
     error instanceof AiProviderNotFoundError ||
@@ -698,6 +718,15 @@ const handleSyncModels = async (
   });
 
   if (!synced.ok) {
+    if (isPortError(synced.error)) {
+      sendJson(
+        response,
+        mapPortErrorStatus(synced.error),
+        portErrorBody(synced.error),
+      );
+      return;
+    }
+
     sendRepositoryError(response);
     return;
   }
@@ -705,11 +734,7 @@ const handleSyncModels = async (
   sendJson(
     response,
     200,
-    await toConfigurationResponse(
-      synced.value.configuration,
-      input.credentialVault,
-      synced.value.warning === undefined ? [] : [synced.value.warning],
-    ),
+    await toConfigurationResponse(synced.value.configuration, input.credentialVault),
   );
 };
 
@@ -777,14 +802,13 @@ const handleSaveActiveSelection = async (
     return;
   }
 
+  await invalidateFeed(input.clearFeedCache);
   const saved = await input.repository.saveActiveSelection({ selection });
 
   if (!saved.ok) {
     sendRepositoryError(response);
     return;
   }
-
-  await invalidateFeed(input.clearFeedCache);
   sendJson(
     response,
     200,
