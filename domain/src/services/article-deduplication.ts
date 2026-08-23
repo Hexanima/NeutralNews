@@ -65,6 +65,7 @@ interface ArticleGroup {
 
 const strongTitleSimilarityThreshold = 0.92;
 const compatibleDateWindowMs = 48 * 60 * 60 * 1000;
+const contradictorTokens = new Set(["no", "nunca", "jamas", "sin", "ni"]);
 
 const configuredTrackingParameters = (
   trackingParameters: readonly string[] | undefined,
@@ -140,6 +141,30 @@ const tokenDiceSimilarity = (left: string, right: string): number => {
   return (2 * intersectionSize) / (leftTokens.size + rightTokens.size);
 };
 
+const removeContradictorTokens = (normalizedTitle: string): string =>
+  normalizedTitle
+    .split(" ")
+    .filter((token) => !contradictorTokens.has(token))
+    .join(" ");
+
+const hasContradictorToken = (normalizedTitle: string): boolean =>
+  normalizedTitle
+    .split(" ")
+    .some((token) => contradictorTokens.has(token));
+
+const hasContradictorMismatch = (left: string, right: string): boolean => {
+  if (hasContradictorToken(left) === hasContradictorToken(right)) {
+    return false;
+  }
+
+  return (
+    tokenDiceSimilarity(
+      removeContradictorTokens(left),
+      removeContradictorTokens(right),
+    ) >= strongTitleSimilarityThreshold
+  );
+};
+
 const datesAreCompatible = (
   left: IsoDateTimeString | undefined,
   right: IsoDateTimeString | undefined,
@@ -162,6 +187,10 @@ const titlesMatchForDeduplication = (
   }
 
   if (!datesAreCompatible(left.article.publishedAt, right.canonicalPublishedAt)) {
+    return false;
+  }
+
+  if (hasContradictorMismatch(left.normalizedTitle, right.canonicalTitle)) {
     return false;
   }
 
