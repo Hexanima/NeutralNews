@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  AiCredentialUnavailableError,
   createFakeAiGenerationPort,
   err,
   ExternalPortError,
@@ -107,10 +108,12 @@ describe("AI provider model synchronization service", () => {
       now: () => new Date(syncedAt),
     });
     const storedBeforeFailure = await readFile(join(directory, configPath), "utf8");
+    const remoteError = new ExternalPortError(
+      "openai.models.list",
+      "TransientFailure",
+    );
     const failingProvider = createFakeAiGenerationPort({
-      listAccessibleModelsResult: err(
-        new ExternalPortError("openai.models.list", "TransientFailure"),
-      ),
+      listAccessibleModelsResult: err(remoteError),
     });
 
     const result = await syncAiProviderModels({
@@ -138,5 +141,27 @@ describe("AI provider model synchronization service", () => {
         remoteModels: [{ id: "gpt-5.6-terra" }],
       },
     ]);
+  });
+
+  it("returns credential errors instead of warnings when credentials cannot be read", async () => {
+    const directory = await createTemporaryDirectory();
+    const repository = createJsonAiProviderConfigurationRepository(directory);
+    const credentialError = new AiCredentialUnavailableError("openai", "api_key");
+    const aiProvider = createFakeAiGenerationPort({
+      listAccessibleModelsResult: err(credentialError),
+    });
+
+    const result = await syncAiProviderModels({
+      providerId: "openai",
+      configurationRepository: repository,
+      aiProvider,
+      now: () => new Date(syncedAt),
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      throw new Error("Expected model synchronization to fail");
+    }
+    expect(result.error).toBe(credentialError);
   });
 });

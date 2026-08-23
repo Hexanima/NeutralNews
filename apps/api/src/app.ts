@@ -31,6 +31,10 @@ import {
   type ConfigurationRequestOptions,
 } from "./configuration-endpoints.js";
 import {
+  handleAiConfigurationRequest,
+  type AiConfigurationRequestOptions,
+} from "./ai-configuration-endpoints.js";
+import {
   executeExternalOperation,
   type ExecuteExternalOperationOptions,
   type ExternalServiceError,
@@ -72,6 +76,7 @@ export interface AppOptions {
   config?: ApiConfig;
   healthResponseFactory?: HealthResponseFactory;
   configurationRequestOptions?: ConfigurationRequestOptions | undefined;
+  aiConfigurationRequestOptions?: AiConfigurationRequestOptions | undefined;
   loginAttemptLimiter?: LoginAttemptLimiter;
 }
 
@@ -307,6 +312,17 @@ export const requestHandler = async (
     return;
   }
   if (handleLogoutRequest(request, response, options.config)) {
+    return;
+  }
+
+  if (
+    await handleAiConfigurationRequest(
+      request,
+      response,
+      options.config,
+      options.aiConfigurationRequestOptions,
+    )
+  ) {
     return;
   }
 
