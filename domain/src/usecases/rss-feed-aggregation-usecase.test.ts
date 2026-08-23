@@ -460,4 +460,5 @@ describe("aggregate RSS feeds use case", () => {
         },
       ]);
     }
-  });});
+  });
+});
