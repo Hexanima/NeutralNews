@@ -3,6 +3,7 @@ import type {
   AiCapabilityUnavailableError,
   AiModelIncompatibleError,
   AiModelNotFoundError,
+  AiModelUnavailableError,
   AiProviderNotFoundError,
 } from "../ai/index.js";
 
@@ -122,6 +123,7 @@ export type PortError =
   | AiCapabilityUnavailableError
   | AiModelIncompatibleError
   | AiModelNotFoundError
+  | AiModelUnavailableError
   | AiProviderNotFoundError
   | AiCredentialUnavailableError
   | AiProviderUnsupportedError

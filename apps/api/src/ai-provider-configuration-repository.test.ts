@@ -72,6 +72,7 @@ describe("JSON AI provider configuration repository", () => {
       credentialReferences: [],
       providerOverrides: [],
       modelOverrides: [],
+      modelSynchronizations: [],
     });
   });
 
@@ -214,6 +215,7 @@ describe("JSON AI provider configuration repository", () => {
       credentialReferences: [],
       providerOverrides: [],
       modelOverrides: [],
+      modelSynchronizations: [],
     });
   });
 
@@ -279,6 +281,7 @@ describe("JSON AI provider configuration repository", () => {
       credentialReferences: [],
       providerOverrides: [],
       modelOverrides: [],
+      modelSynchronizations: [],
     });
     expect(
       (await readdir(join(directory, "configuration"))).some((fileName) =>

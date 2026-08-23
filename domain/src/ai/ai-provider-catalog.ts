@@ -3,6 +3,7 @@ import { err, ok, type Result } from "../types/result.js";
 import type {
   AiCapability,
   AiCredentialFieldDefinition,
+  AiModelAvailabilityStatus,
   AiModelCompatibilityStatus,
   AiModelDefinition,
   AiProviderDefinition,
@@ -27,6 +28,7 @@ export type AiProviderCatalogField =
   | "credentialField"
   | "capabilities"
   | "compatibilityStatus"
+  | "availabilityStatus"
   | "id";
 
 export class InvalidAiProviderCatalogValueError extends TaggedError<"InvalidAiProviderCatalogValue"> {
@@ -64,6 +66,11 @@ const validCompatibilityStatuses = new Set<AiModelCompatibilityStatus>([
   "compatible",
   "incompatible",
   "unknown",
+]);
+const validAvailabilityStatuses = new Set<AiModelAvailabilityStatus>([
+  "unknown",
+  "available",
+  "unavailable",
 ]);
 
 const invalidValue = (field: AiProviderCatalogField, value: unknown) =>
@@ -148,18 +155,24 @@ const createModel = (
     !isNonEmptyString(value.remoteModelId) ||
     !Array.isArray(value.capabilities) ||
     typeof value.compatibilityStatus !== "string" ||
-    !validCompatibilityStatuses.has(value.compatibilityStatus as AiModelCompatibilityStatus)
+    !validCompatibilityStatuses.has(value.compatibilityStatus as AiModelCompatibilityStatus) ||
+    (value.availabilityStatus !== undefined &&
+      (typeof value.availabilityStatus !== "string" ||
+        !validAvailabilityStatuses.has(value.availabilityStatus as AiModelAvailabilityStatus)))
   ) {
     return err(invalidValue("model", value));
   }
 
   if (
-    value.capabilities.length === 0 ||
     !value.capabilities.every(
       (capability): capability is AiCapability =>
         typeof capability === "string" && validCapabilities.has(capability as AiCapability),
     )
   ) {
+    return err(invalidValue("capabilities", value.capabilities));
+  }
+
+  if (value.capabilities.length === 0 && value.compatibilityStatus !== "unknown") {
     return err(invalidValue("capabilities", value.capabilities));
   }
 
@@ -169,6 +182,8 @@ const createModel = (
     remoteModelId: value.remoteModelId,
     capabilities: value.capabilities,
     compatibilityStatus: value.compatibilityStatus as AiModelCompatibilityStatus,
+    availabilityStatus:
+      (value.availabilityStatus as AiModelAvailabilityStatus | undefined) ?? "unknown",
   });
 };
 

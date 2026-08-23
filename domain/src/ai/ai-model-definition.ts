@@ -10,6 +10,7 @@ export type AiCapability =
 
 export type AiCredentialFieldType = "secret" | "text" | "url";
 export type AiModelCompatibilityStatus = "compatible" | "incompatible" | "unknown";
+export type AiModelAvailabilityStatus = "unknown" | "available" | "unavailable";
 
 export interface AiCredentialFieldDefinition {
   id: string;
@@ -35,6 +36,7 @@ export interface AiModelDefinition {
   remoteModelId: string;
   capabilities: readonly AiCapability[];
   compatibilityStatus: AiModelCompatibilityStatus;
+  availabilityStatus: AiModelAvailabilityStatus;
 }
 
 export interface AiModelSelection {
@@ -75,6 +77,18 @@ export class AiModelIncompatibleError extends TaggedError<"AiModelIncompatible">
   }
 }
 
+export class AiModelUnavailableError extends TaggedError<"AiModelUnavailable"> {
+  public readonly type = "AiModelUnavailable";
+
+  constructor(
+    public readonly providerId: string,
+    public readonly modelId: string,
+  ) {
+    super("AiModelUnavailable");
+    this.message = `${providerId}/${modelId} is not available for the configured credential`;
+  }
+}
+
 export class AiCapabilityUnavailableError extends TaggedError<"AiCapabilityUnavailable"> {
   public readonly type = "AiCapabilityUnavailable";
 
@@ -92,6 +106,7 @@ export type AiModelSelectionError =
   | AiProviderNotFoundError
   | AiModelNotFoundError
   | AiModelIncompatibleError
+  | AiModelUnavailableError
   | AiCapabilityUnavailableError;
 
 export interface ValidateAiModelSelectionInput {
@@ -161,6 +176,12 @@ export const validateAiModelSelection = ({
   if (model.compatibilityStatus !== "compatible") {
     return err(
       new AiModelIncompatibleError(selection.providerId, selection.modelId),
+    );
+  }
+
+  if (model.availabilityStatus === "unavailable") {
+    return err(
+      new AiModelUnavailableError(selection.providerId, selection.modelId),
     );
   }
 

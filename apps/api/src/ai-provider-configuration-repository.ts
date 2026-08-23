@@ -4,15 +4,18 @@ import {
   createEffectiveAiProviderConfiguration,
   err,
   initialAiProviderCatalogSnapshot,
+  InvalidAiProviderConfigurationError,
+  InvalidAiProviderConfigurationValueError,
   isOk,
   ok,
   TaggedError,
+  validateAiModelSelection,
   type AiModelSelection,
+  type AiModelSynchronizationSnapshot,
   type AiProviderCatalogSnapshot,
   type AiProviderConfigurationSnapshot,
   type EffectiveAiProviderConfiguration,
   type InvalidAiProviderCatalogError,
-  type InvalidAiProviderConfigurationError,
   type Result,
 } from "app-domain";
 
@@ -66,6 +69,12 @@ export interface JsonAiProviderConfigurationRepository {
       JsonAiProviderConfigurationRepositoryError
     >
   >;
+  saveModelSynchronization: (input: AiModelSynchronizationSnapshot) => Promise<
+    Result<
+      EffectiveAiProviderConfiguration,
+      JsonAiProviderConfigurationRepositoryError
+    >
+  >;
 }
 
 export interface JsonAiProviderConfigurationRepositoryOptions {
@@ -89,6 +98,7 @@ const createSnapshotFromCurrent = (
   input: {
     activeSelection?: AiModelSelection | undefined;
     credentialReferences?: AiProviderConfigurationSnapshot["credentialReferences"] | undefined;
+    modelSynchronizations?: AiProviderConfigurationSnapshot["modelSynchronizations"] | undefined;
   },
 ) =>
   createAiProviderConfigurationSnapshot({
@@ -99,7 +109,14 @@ const createSnapshotFromCurrent = (
       input.credentialReferences ?? current.credentialReferences,
     providerOverrides: current.providerOverrides,
     modelOverrides: current.modelOverrides,
+    modelSynchronizations:
+      input.modelSynchronizations ?? current.modelSynchronizations,
   });
+
+const selectionConfigurationError = (selection: AiModelSelection) =>
+  new InvalidAiProviderConfigurationError([
+    new InvalidAiProviderConfigurationValueError("activeSelection", selection),
+  ]);
 
 export const createJsonAiProviderConfigurationRepository = (
   dataDirectory: string,
@@ -241,7 +258,30 @@ export const createJsonAiProviderConfigurationRepository = (
         return nextSnapshot;
       }
 
-      return saveMutatedSnapshot(nextSnapshot.value);
+      const effective = effectiveFromSnapshot(nextSnapshot.value);
+
+      if (!effective.ok) {
+        return effective;
+      }
+
+      const selectable = validateAiModelSelection({
+        providers: effective.value.providers,
+        models: effective.value.models,
+        selection,
+        requiredCapabilities: [],
+      });
+
+      if (!selectable.ok) {
+        return err(selectionConfigurationError(selection));
+      }
+
+      const writeResult = await writeSnapshot(nextSnapshot.value);
+
+      if (!writeResult.ok) {
+        return writeResult;
+      }
+
+      return effective;
     },
 
     saveCredentialReference: async ({ providerId, fieldId, reference }) => {
@@ -261,6 +301,30 @@ export const createJsonAiProviderConfigurationRepository = (
       ];
       const nextSnapshot = createSnapshotFromCurrent(current.value, {
         credentialReferences,
+      });
+
+      if (!nextSnapshot.ok) {
+        return nextSnapshot;
+      }
+
+      return saveMutatedSnapshot(nextSnapshot.value);
+    },
+
+    saveModelSynchronization: async (input) => {
+      const current = await readSnapshot();
+
+      if (!current.ok) {
+        return current;
+      }
+
+      const modelSynchronizations = [
+        ...current.value.modelSynchronizations.filter(
+          (synchronization) => synchronization.providerId !== input.providerId,
+        ),
+        input,
+      ];
+      const nextSnapshot = createSnapshotFromCurrent(current.value, {
+        modelSynchronizations,
       });
 
       if (!nextSnapshot.ok) {
