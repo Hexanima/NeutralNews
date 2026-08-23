@@ -390,6 +390,26 @@ const sendProviderNotFound = (response: ServerResponse, providerId: string) => {
   });
 };
 
+const createDefaultFeedInvalidator = (dataDirectory: string) => {
+  const repository = createLocalJsonFileRepository(dataDirectory);
+
+  return async () => {
+    const current = await repository.readJson("cache/feed-invalidation.json");
+    const currentVersion = current.ok && isRecord(current.value) &&
+      typeof current.value.version === "number" &&
+      Number.isInteger(current.value.version) &&
+      current.value.version >= 1
+      ? current.value.version
+      : 0;
+
+    await repository.writeJson("cache/feed-invalidation.json", {
+      schemaVersion: 1,
+      version: currentVersion + 1,
+      invalidatedAt: new Date().toISOString(),
+    });
+  };
+};
+
 const invalidateFeed = async (
   clearFeedCache: (() => Promise<void>) | undefined,
 ) => {
@@ -484,6 +504,18 @@ const handleDeleteCredential = async (
     clearFeedCache?: (() => Promise<void>) | undefined;
   },
 ) => {
+  const configuration = await input.repository.getEffectiveConfiguration();
+
+  if (!configuration.ok) {
+    sendRepositoryError(response);
+    return;
+  }
+
+  if (providerForId(configuration.value, input.providerId) === undefined) {
+    sendProviderNotFound(response, input.providerId);
+    return;
+  }
+
   const deleted = await input.credentialVault.deleteSecret(input.providerId);
 
   if (!deleted.ok) {
@@ -674,6 +706,12 @@ const handleSaveActiveSelection = async (
     return;
   }
 
+  if (validated.value.model.availabilityStatus !== "available") {
+    const error = new AiModelUnavailableError(selection.providerId, selection.modelId);
+    sendJson(response, 409, portErrorBody(error));
+    return;
+  }
+
   const saved = await input.repository.saveActiveSelection({ selection });
 
   if (!saved.ok) {
@@ -720,6 +758,8 @@ export const handleAiConfigurationRequest = async (
     options.credentialVault ?? createDefaultCredentialVault(config);
   const aiProvider =
     options.aiProvider ?? createDefaultAiProvider(repository, credentialVault, config);
+  const clearFeedCache =
+    options.clearFeedCache ?? createDefaultFeedInvalidator(config.dataDirectory);
 
   if (pathname === aiConfigurationPath && request.method === "GET") {
     const configuration = await repository.getEffectiveConfiguration();
@@ -757,7 +797,7 @@ export const handleAiConfigurationRequest = async (
       body,
       repository,
       credentialVault,
-      clearFeedCache: options.clearFeedCache,
+      clearFeedCache,
     });
     return true;
   }
@@ -772,7 +812,7 @@ export const handleAiConfigurationRequest = async (
       body,
       repository,
       credentialVault,
-      clearFeedCache: options.clearFeedCache,
+      clearFeedCache,
     });
     return true;
   }
@@ -782,7 +822,7 @@ export const handleAiConfigurationRequest = async (
       providerId: providerAction.providerId,
       repository,
       credentialVault,
-      clearFeedCache: options.clearFeedCache,
+      clearFeedCache,
     });
     return true;
   }

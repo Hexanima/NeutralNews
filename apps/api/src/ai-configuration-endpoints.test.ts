@@ -219,6 +219,26 @@ describe("AI provider configuration HTTP endpoints", () => {
     ).toEqual([]);
   });
 
+  it("rejects credential deletion for providers outside the catalog", async () => {
+    const environment = await createValidEnvironment();
+    await fetchFromApp("/api/configuration/ai", environment);
+
+    const response = await fetchFromApp(
+      "/api/configuration/ai/providers/missing/credentials",
+      environment,
+      { method: "DELETE" },
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({
+      error: { code: "AiProviderNotFound", providerId: "missing" },
+    });
+    expect(
+      (await readStoredConfiguration(environment.NEUTRALNEWS_DATA_DIR!))
+        .configurationVersion,
+    ).toBe(1);
+  });
+
   it("tests a submitted credential without persisting it", async () => {
     const environment = await createValidEnvironment();
     const aiProvider = createFakeAiGenerationPort({
@@ -320,6 +340,32 @@ describe("AI provider configuration HTTP endpoints", () => {
     });
   });
 
+  it("rejects active selections before model availability is confirmed", async () => {
+    const environment = await createValidEnvironment();
+
+    const response = await fetchFromApp(
+      "/api/configuration/ai/active-selection",
+      environment,
+      {
+        method: "PUT",
+        json: { providerId: "openai", modelId: "gpt-5.6-sol" },
+      },
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: {
+        code: "AiModelUnavailable",
+        providerId: "openai",
+        modelId: "gpt-5.6-sol",
+      },
+    });
+    expect(
+      (await readStoredConfiguration(environment.NEUTRALNEWS_DATA_DIR!))
+        .activeSelection,
+    ).toEqual({ providerId: "openai", modelId: "gpt-5.6-terra" });
+  });
+
   it("rejects unsupported active selections and keeps the previous selection", async () => {
     const environment = await createValidEnvironment();
     const credentialVault = createInMemoryCredentialVault();
@@ -368,7 +414,26 @@ describe("AI provider configuration HTTP endpoints", () => {
 
   it("persists a compatible active selection and invalidates dependent feed cache", async () => {
     const environment = await createValidEnvironment();
+    const credentialVault = createInMemoryCredentialVault();
+    const aiProvider = createFakeAiGenerationPort({
+      remoteModels: [{ id: "gpt-5.6-terra" }, { id: "gpt-5.6-sol" }],
+    });
     let invalidations = 0;
+    await fetchFromApp(
+      "/api/configuration/ai/providers/openai/credentials",
+      environment,
+      {
+        method: "PUT",
+        json: { credentialValues: [{ fieldId: "api_key", value: apiKey }] },
+      },
+      { credentialVault, aiProvider },
+    );
+    await fetchFromApp(
+      "/api/configuration/ai/providers/openai/models/sync",
+      environment,
+      { method: "POST" },
+      { credentialVault, aiProvider },
+    );
 
     const response = await fetchFromApp(
       "/api/configuration/ai/active-selection",
@@ -378,6 +443,8 @@ describe("AI provider configuration HTTP endpoints", () => {
         json: { providerId: "openai", modelId: "gpt-5.6-sol" },
       },
       {
+        credentialVault,
+        aiProvider,
         clearFeedCache: async () => {
           invalidations += 1;
         },
@@ -386,7 +453,7 @@ describe("AI provider configuration HTTP endpoints", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
-      configurationVersion: 2,
+      configurationVersion: 4,
       activeSelection: { providerId: "openai", modelId: "gpt-5.6-sol" },
     });
     expect(invalidations).toBe(1);
