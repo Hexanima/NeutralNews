@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Medio RSS Mixto</title>
+    <item>
+      <title></title>
+      <link>https://example.com/sin-titulo</link>
+      <description>Esta entrada no debe aparecer.</description>
+      <pubDate>Thu, 20 Aug 2026 11:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Entrada valida sin fecha confiable</title>
+      <link>https://example.com/valida-sin-fecha</link>
+      <description>Resumen valido con una fecha descartable.</description>
+      <pubDate>fecha invalida</pubDate>
+    </item>
+    <item>
+      <title>Entrada con link inseguro</title>
+      <link>javascript:alert(1)</link>
+      <description>Esta entrada debe omitirse.</description>
+      <pubDate>Thu, 20 Aug 2026 10:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Entrada valida con resumen</title>
+      <link>https://example.com/valida-con-resumen</link>
+      <description>Resumen que debe conservarse como evidencia RSS.</description>
+      <pubDate>Thu, 20 Aug 2026 09:00:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>

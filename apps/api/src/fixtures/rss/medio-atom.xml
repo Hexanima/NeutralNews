@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Medio Atom Sintetico</title>
+  <entry>
+    <title>Autoridades anuncian una mesa regional</title>
+    <link href="https://atom.example.org/noticias/mesa-regional" rel="alternate" />
+    <summary>Funcionarios de varios paises informaron una agenda comun.</summary>
+    <published>2026-08-21T09:15:00Z</published>
+  </entry>
+  <entry>
+    <title>Comision legislativa convoca especialistas</title>
+    <link href="https://atom.example.org/noticias/comision" />
+    <content>La convocatoria se realizara durante la proxima semana.</content>
+    <updated>2026-08-21T10:45:00Z</updated>
+  </entry>
+</feed>
