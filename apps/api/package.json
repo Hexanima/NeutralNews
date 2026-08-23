@@ -18,6 +18,7 @@
   "dependencies": {
     "ajv": "^6.12.6",
     "app-domain": "workspace:^",
+    "fast-xml-parser": "^5.11.0",
     "openai": "^7.5.0"
   }
 }

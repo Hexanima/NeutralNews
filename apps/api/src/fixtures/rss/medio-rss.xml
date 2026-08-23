@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Medio RSS Sintetico</title>
+    <item>
+      <title>Congreso debate una reforma presupuestaria</title>
+      <link>https://example.com/politica/reforma-presupuestaria</link>
+      <description>Legisladores presentaron posiciones distintas durante la sesion.</description>
+      <pubDate>Thu, 20 Aug 2026 13:30:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Gobernadores se reunen por transporte</title>
+      <link>https://example.com/politica/transporte</link>
+      <description>El encuentro incluyo pedidos de financiamiento y coordinacion.</description>
+      <pubDate>Thu, 20 Aug 2026 12:00:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>
