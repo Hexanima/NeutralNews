@@ -50,6 +50,23 @@ const validStatementInput: ArticleStatementSnapshot = {
 };
 
 describe("Article and evidence contracts", () => {
+  it("preserves an optional article author in runtime and persistible snapshots", () => {
+    const result = createArticle({
+      ...validArticleInput,
+      author: "Ana Pérez",
+    });
+
+    expect(isOk(result)).toBe(true);
+    if (!isOk(result)) {
+      return;
+    }
+
+    expect(result.value).toMatchObject({ author: "Ana Pérez" });
+    expect(toArticleSnapshot(result.value)).toMatchObject({
+      author: "Ana Pérez",
+    });
+  });
+
   it("creates an article with source, url, title, language, and optional date", () => {
     const result = createArticle(validArticleInput);
 
