@@ -110,35 +110,71 @@ export const normalizeArticleTitle = (title: string): string =>
     .replace(/\s+/g, " ")
     .trim();
 
-const tokenSet = (normalizedTitle: string): Set<string> =>
-  new Set(
-    normalizedTitle
-      .split(" ")
-      .map((token) => token.trim())
-      .filter((token) => token !== ""),
+const lowInformationTitleTokens = new Set([
+  "a",
+  "de",
+  "del",
+  "el",
+  "en",
+  "la",
+  "las",
+  "los",
+  "un",
+  "una",
+]);
+
+const titleTokens = (normalizedTitle: string): readonly string[] =>
+  normalizedTitle
+    .split(" ")
+    .map((token) => token.trim())
+    .filter((token) => token !== "");
+
+const significantTitleTokens = (normalizedTitle: string): readonly string[] =>
+  titleTokens(normalizedTitle).filter(
+    (token) => !lowInformationTitleTokens.has(token),
   );
 
-const tokenDiceSimilarity = (left: string, right: string): number => {
-  const leftTokens = tokenSet(left);
-  const rightTokens = tokenSet(right);
+const orderedTokenBigrams = (tokens: readonly string[]): readonly string[] => {
+  const bigrams: string[] = [];
 
-  if (leftTokens.size === 0 && rightTokens.size === 0) {
-    return 1;
+  for (let index = 0; index < tokens.length - 1; index += 1) {
+    bigrams.push(`${tokens[index]} ${tokens[index + 1]}`);
   }
 
-  if (leftTokens.size === 0 || rightTokens.size === 0) {
+  return bigrams;
+};
+
+const orderedBigramDiceSimilarity = (left: string, right: string): number => {
+  const leftBigrams = orderedTokenBigrams(significantTitleTokens(left));
+  const rightBigrams = orderedTokenBigrams(significantTitleTokens(right));
+
+  if (leftBigrams.length === 0 || rightBigrams.length === 0) {
     return 0;
+  }
+
+  const remainingRightBigrams = new Map<string, number>();
+
+  for (const bigram of rightBigrams) {
+    remainingRightBigrams.set(
+      bigram,
+      (remainingRightBigrams.get(bigram) ?? 0) + 1,
+    );
   }
 
   let intersectionSize = 0;
 
-  for (const token of leftTokens) {
-    if (rightTokens.has(token)) {
-      intersectionSize += 1;
+  for (const bigram of leftBigrams) {
+    const remainingCount = remainingRightBigrams.get(bigram) ?? 0;
+
+    if (remainingCount === 0) {
+      continue;
     }
+
+    intersectionSize += 1;
+    remainingRightBigrams.set(bigram, remainingCount - 1);
   }
 
-  return (2 * intersectionSize) / (leftTokens.size + rightTokens.size);
+  return (2 * intersectionSize) / (leftBigrams.length + rightBigrams.length);
 };
 
 const removeContradictorTokens = (normalizedTitle: string): string =>
@@ -158,7 +194,7 @@ const hasContradictorMismatch = (left: string, right: string): boolean => {
   }
 
   return (
-    tokenDiceSimilarity(
+    orderedBigramDiceSimilarity(
       removeContradictorTokens(left),
       removeContradictorTokens(right),
     ) >= strongTitleSimilarityThreshold
@@ -196,7 +232,7 @@ const titlesMatchForDeduplication = (
 
   return (
     exactTitleMatch ||
-    tokenDiceSimilarity(left.normalizedTitle, right.canonicalTitle) >=
+    orderedBigramDiceSimilarity(left.normalizedTitle, right.canonicalTitle) >=
       strongTitleSimilarityThreshold
   );
 };

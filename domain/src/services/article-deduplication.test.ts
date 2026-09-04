@@ -177,6 +177,28 @@ describe("article deduplication", () => {
     expect(result.articleMergeGroups).toEqual([]);
   });
 
+  it("does not merge titles with the same tokens in a different subject order", () => {
+    const first = createArticle("1", {
+      url: "https://medio-a.example/politica/critica-milei" as ArticleUrl,
+      title: "Milei critica a Cristina",
+      publishedAt: "2026-08-20T10:00:00.000Z" as IsoDateTimeString,
+    });
+    const second = createArticle("2", {
+      sourceId: otherSourceId,
+      url: "https://medio-b.example/politica/critica-cristina" as ArticleUrl,
+      title: "Cristina critica a Milei",
+      publishedAt: "2026-08-20T11:00:00.000Z" as IsoDateTimeString,
+    });
+
+    const result = deduplicateArticles({
+      articles: [first, second],
+      evidence: [],
+    });
+
+    expect(result.articles).toHaveLength(2);
+    expect(result.articleMergeGroups).toEqual([]);
+  });
+
   it("does not merge strongly similar titles when only one contains a negation", () => {
     const first = createArticle("1", {
       url: "https://medio-a.example/politica/veto-jubilaciones" as ArticleUrl,
