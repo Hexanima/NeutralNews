@@ -10,15 +10,18 @@
     "test": "vitest"
   },
   "devDependencies": {
+    "@types/jsdom": "^30",
     "@types/node": "^24.6.0",
     "tsx": "^4.20.6",
     "typescript": "^5.8.3",
     "vitest": "^3.2.4"
   },
   "dependencies": {
+    "@mozilla/readability": "^0.6.0",
     "ajv": "^6.12.6",
     "app-domain": "workspace:^",
     "fast-xml-parser": "^5.11.0",
+    "jsdom": "^30.0.1",
     "openai": "^7.5.0"
   }
 }

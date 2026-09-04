@@ -167,6 +167,7 @@ describe("domain ports", () => {
     });
     const extractionResult = await extractor.extractArticle({
       article,
+      fallbackEvidence: [evidence],
       options: { signal, timeoutMs: 1000, maxBytes: 8192 },
     });
     const searchResult = await search.search({
@@ -180,6 +181,10 @@ describe("domain ports", () => {
     expect(isOk(feedResult)).toBe(true);
     expect(isOk(extractionResult)).toBe(true);
     expect(isOk(searchResult)).toBe(true);
+    if (isOk(extractionResult)) {
+      expect(extractionResult.value.extractionStatus).toBe("partial");
+    }
+
     expect(rss.calls.readFeed[0]?.options?.maxItems).toBe(5);
     expect(rss.calls.readFeed[0]?.options?.maxRedirects).toBe(2);
     expect(extractor.calls.extractArticle[0]?.options?.maxBytes).toBe(8192);

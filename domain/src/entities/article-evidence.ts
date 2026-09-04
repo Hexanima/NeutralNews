@@ -21,6 +21,7 @@ export interface Article {
   sourceId: UUID;
   url: ArticleUrl;
   title: string;
+  author?: string | undefined;
   language: LanguageCode;
   publishedAt?: IsoDateTimeString | undefined;
 }
@@ -30,6 +31,7 @@ export interface ArticleSnapshot {
   sourceId: string;
   url: string;
   title: string;
+  author?: string | undefined;
   language: string;
   publishedAt?: string | undefined;
 }
@@ -106,6 +108,7 @@ export type ArticleEvidenceField =
   | "evidenceFragmentId"
   | "url"
   | "title"
+  | "author"
   | "language"
   | "publishedAt"
   | "text"
@@ -214,6 +217,18 @@ const createArticleUrl = (
   }
 };
 
+const createArticleAuthor = (
+  value: unknown,
+): Result<string | undefined, InvalidArticleEvidenceValueError> => {
+  if (value === undefined) {
+    return ok(undefined);
+  }
+
+  const result = createNonEmptyText("author", value);
+
+  return result.ok ? ok(result.value) : err(result.error);
+};
+
 const createArticleLanguage = (
   value: unknown,
 ): Result<LanguageCode, InvalidArticleEvidenceValueError> => {
@@ -305,6 +320,7 @@ export const createArticle = (
   const sourceId = createUuid("sourceId", snapshot.sourceId);
   const url = createArticleUrl(snapshot.url);
   const title = createNonEmptyText("title", snapshot.title);
+  const author = createArticleAuthor(snapshot.author);
   const language = createArticleLanguage(snapshot.language);
   const publishedAt = createPublishedAt(snapshot.publishedAt);
 
@@ -313,12 +329,13 @@ export const createArticle = (
     !sourceId.ok ||
     !url.ok ||
     !title.ok ||
+    !author.ok ||
     !language.ok ||
     !publishedAt.ok
   ) {
     return err(
       new InvalidArticleEvidenceError(
-        collectErrors([id, sourceId, url, title, language, publishedAt]),
+        collectErrors([id, sourceId, url, title, author, language, publishedAt]),
       ),
     );
   }
@@ -328,6 +345,7 @@ export const createArticle = (
     sourceId: sourceId.value,
     url: url.value,
     title: title.value,
+    author: author.value,
     language: language.value,
     publishedAt: publishedAt.value,
   });
@@ -338,6 +356,7 @@ export const toArticleSnapshot = (article: Article): ArticleSnapshot => ({
   sourceId: article.sourceId,
   url: article.url,
   title: article.title,
+  author: article.author,
   language: article.language,
   publishedAt: article.publishedAt,
 });
