@@ -33,6 +33,7 @@ export interface ExternalServiceConfig {
 
 export interface RssFeedConfig {
   maxConcurrency: number;
+  trackingParameters: string[];
 }
 
 export class ConfigurationError extends Error {
@@ -53,6 +54,18 @@ const defaultExternalTimeoutMs = 15_000;
 const defaultExternalMaxAttempts = 3;
 const defaultExternalRetryDelayMs = 250;
 const defaultRssMaxConcurrency = 3;
+const defaultRssTrackingParameters = [
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_term",
+  "utm_content",
+  "utm_id",
+  "gclid",
+  "fbclid",
+  "mc_cid",
+  "mc_eid",
+];
 const argon2HashPattern =
   /^\$argon2id\$v=19\$m=\d+,t=\d+,p=\d+\$[A-Za-z0-9+/]+={0,2}\$[A-Za-z0-9+/]+={0,2}$/;
 const minimumSessionSecretLength = 32;
@@ -194,6 +207,34 @@ const parsePort = (
   }
 
   return port;
+};
+
+const parseCommaSeparatedListSetting = (
+  environment: NodeJS.ProcessEnv,
+  variable: string,
+  defaultValue: readonly string[],
+): string[] => {
+  const rawValue = environment[variable];
+
+  if (rawValue === undefined || rawValue.trim() === "") {
+    return [...defaultValue];
+  }
+
+  const seen = new Set<string>();
+  const values: string[] = [];
+
+  for (const rawItem of rawValue.split(",")) {
+    const value = rawItem.trim().toLowerCase();
+
+    if (value === "" || seen.has(value)) {
+      continue;
+    }
+
+    seen.add(value);
+    values.push(value);
+  }
+
+  return values;
 };
 
 const parseIntegerSetting = (
@@ -367,6 +408,11 @@ const resolveRssFeedConfig = (
     defaultRssMaxConcurrency,
     1,
     issues,
+  ),
+  trackingParameters: parseCommaSeparatedListSetting(
+    environment,
+    "NEUTRALNEWS_RSS_TRACKING_PARAMS",
+    defaultRssTrackingParameters,
   ),
 });
 

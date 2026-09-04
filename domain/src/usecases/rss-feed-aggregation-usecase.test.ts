@@ -369,4 +369,96 @@ describe("aggregate RSS feeds use case", () => {
     expect(rssFeedReader.calls).toHaveLength(1);
     expect(rssFeedReader.calls[0]?.source.id).toBe(activeRss.source.id);
   });
+
+  it("deduplicates articles by canonical URL while preserving merged references", async () => {
+    const first = createRssEntry("1");
+    const second = createRssEntry("2");
+    const original = createArticle("1", first.source.id);
+    const duplicate = {
+      ...createArticle("2", second.source.id),
+      url: "https://example.com/article-1?utm_source=feed" as ArticleUrl,
+      title: original.title,
+    };
+    const rssFeedReader = createReader(
+      new Map([
+        [
+          first.source.id,
+          ok({
+            sourceId: first.source.id,
+            feedUrl: first.discovery.feedUrl,
+            articles: [original],
+            evidence: [createEvidence("1", original)],
+          }),
+        ],
+        [
+          second.source.id,
+          ok({
+            sourceId: second.source.id,
+            feedUrl: second.discovery.feedUrl,
+            articles: [duplicate],
+            evidence: [createEvidence("2", duplicate)],
+          }),
+        ],
+      ]),
+    );
+
+    const result = await aggregateRssFeedsUseCase.execute(
+      { rssFeedReader },
+      {
+        sources: [first, second],
+        deduplication: { trackingParameters: ["utm_source"] },
+      },
+    );
+
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      const articleIds = new Set(result.value.articles.map((article) => article.id));
+
+      expect(result.value.articles).toHaveLength(1);
+      expect(result.value.evidence).toHaveLength(2);
+      expect(
+        result.value.evidence.every((evidence) =>
+          articleIds.has(evidence.provenance.articleId),
+        ),
+      ).toBe(true);
+      expect(result.value.evidence.map((evidence) => evidence.provenance.articleId))
+        .toEqual([original.id, original.id]);
+      expect(result.value.successfulFeeds).toEqual([
+        {
+          sourceId: first.source.id,
+          feedUrl: first.discovery.feedUrl,
+          articleCount: 1,
+          evidenceCount: 1,
+        },
+        {
+          sourceId: second.source.id,
+          feedUrl: second.discovery.feedUrl,
+          articleCount: 1,
+          evidenceCount: 1,
+        },
+      ]);
+      expect(result.value.articleMergeGroups).toEqual([
+        {
+          canonicalArticleId: original.id,
+          canonicalUrl: "https://example.com/article-1",
+          references: [
+            {
+              articleId: original.id,
+              sourceId: original.sourceId,
+              url: original.url,
+              title: original.title,
+              publishedAt: original.publishedAt,
+            },
+            {
+              articleId: duplicate.id,
+              sourceId: duplicate.sourceId,
+              url: duplicate.url,
+              title: duplicate.title,
+              publishedAt: duplicate.publishedAt,
+            },
+          ],
+        },
+      ]);
+    }
+  });
 });

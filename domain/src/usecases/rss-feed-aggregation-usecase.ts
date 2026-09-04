@@ -12,6 +12,11 @@ import {
   type PortError,
   type RssFeedReaderPort,
 } from "../ports/index.js";
+import {
+  deduplicateArticles,
+  type ArticleDeduplicationOptions,
+  type ArticleMergeGroup,
+} from "../services/index.js";
 import { err, ok } from "../types/result.js";
 import type { UseCase } from "../types/usecase.js";
 import type { UUID } from "../types/uuid.js";
@@ -23,6 +28,7 @@ export interface AggregateRssFeedsDependencies {
 export interface AggregateRssFeedsPayload {
   readonly sources: readonly NewsSourceCatalogEntry[];
   readonly options?: LimitedPortOperationOptions | undefined;
+  readonly deduplication?: ArticleDeduplicationOptions | undefined;
 }
 
 export interface AggregateRssFeedSuccess {
@@ -45,6 +51,7 @@ export interface AggregateRssFeedFailure {
 export interface AggregateRssFeedsResult {
   readonly articles: readonly Article[];
   readonly evidence: readonly EvidenceFragment[];
+  readonly articleMergeGroups: readonly ArticleMergeGroup[];
   readonly successfulFeeds: readonly AggregateRssFeedSuccess[];
   readonly failedFeeds: readonly AggregateRssFeedFailure[];
 }
@@ -100,7 +107,7 @@ export const aggregateRssFeedsUseCase: UseCase<
   AggregateRssFeedsResult,
   PortCancelledError
 > = {
-  execute: async ({ rssFeedReader }, { sources, options }) => {
+  execute: async ({ rssFeedReader }, { sources, options, deduplication }) => {
     const signal = options?.signal;
 
     if (isSignalAborted(signal)) {
@@ -156,13 +163,17 @@ export const aggregateRssFeedsUseCase: UseCase<
     const completedOutcomes = outcomes.filter(
       (outcome): outcome is FeedOutcome => outcome !== undefined,
     );
-    const aggregation: AggregateRssFeedsResult = {
+    const deduplicated = deduplicateArticles({
       articles: completedOutcomes.flatMap((outcome) =>
         outcome.ok ? outcome.articles : [],
       ),
       evidence: completedOutcomes.flatMap((outcome) =>
         outcome.ok ? outcome.evidence : [],
       ),
+      trackingParameters: deduplication?.trackingParameters,
+    });
+    const aggregation: AggregateRssFeedsResult = {
+      ...deduplicated,
       successfulFeeds: completedOutcomes.flatMap((outcome) =>
         outcome.ok ? [outcome.value] : [],
       ),
