@@ -60,7 +60,6 @@ type ParseDocument = (input: ParseDocumentInput) => Promise<ParsedDocument | nul
 const extractOperationName = "article.extract";
 const defaultMaxBytes = 2_097_152;
 const defaultMaxRedirects = 3;
-const minimumEditorialTextLength = 200;
 const operationDefaults: ExternalServicePolicy = {
   timeoutMs: 15_000,
   maxAttempts: 3,
@@ -137,13 +136,45 @@ const readJsonLd = (document) => Array.from(document.querySelectorAll('script[ty
 const parse = ({ html, resolvedUrl }) => {
   const dom = new JSDOM(html, { url: resolvedUrl });
   const document = dom.window.document;
+  const editorialRoot = document.querySelector("article, main");
+  if (editorialRoot === null) {
+    return null;
+  }
+  const bodyText = asText(document.body?.textContent)?.toLowerCase() ?? "";
   const jsonLd = readJsonLd(document);
-  const paywalled = jsonLd.some((value) => value.isAccessibleForFree === false || value.isAccessibleForFree === "false")
-    || document.querySelector('[data-paywall], [data-metered], [class*="paywall" i], [id*="paywall" i]') !== null;
+  const restrictedAccessSelector = [
+    '[data-paywall]',
+    '[data-metered]',
+    '[data-subscription]',
+    '[data-subscriber-only]',
+    '[class*="paywall" i]',
+    '[id*="paywall" i]',
+    '.subscription-required',
+    '.subscriber-only',
+    '.premium-content',
+    '.metered-content',
+    '.locked-content',
+    '#subscription-required',
+    '#subscriber-only',
+    '#premium-content',
+    '#metered-content',
+    '#locked-content',
+  ].join(', ');
+  const paywalled =
+    jsonLd.some(
+      (value) =>
+        value.isAccessibleForFree === false || value.isAccessibleForFree === "false",
+    )
+    || document.querySelector(restrictedAccessSelector) !== null
+    || [
+      "suscribite para continuar leyendo",
+      "suscríbete para continuar leyendo",
+      "subscribe to continue reading",
+    ].some((message) => bodyText.includes(message));
   const time = document.querySelector('article time[datetime], main time[datetime], time[datetime]')?.getAttribute("datetime");
   const jsonLdDate = jsonLd.find((value) => typeof value.datePublished === "string")?.datePublished;
   const publishedAt = metaContent(document, ['meta[property="article:published_time"]', 'meta[name="date"]', 'meta[name="publish-date"]']) || asText(time) || asText(jsonLdDate);
-  const parsed = new Readability(document).parse();
+  const parsed = new Readability(document, { charThreshold: 0 }).parse();
   return {
     text: asText(parsed?.textContent),
     title: asText(document.querySelector("article h1, main h1, h1")?.textContent) || asText(parsed?.title) || metaContent(document, ['meta[property="og:title"]', 'meta[name="title"]']),
@@ -206,7 +237,7 @@ const extractFromParsedDocument = (input: {
   PortError
 > => {
   const text = asNonEmptyText(input.parsed?.text);
-  if (input.parsed === null || input.parsed.paywalled || text === undefined || text.length < minimumEditorialTextLength) {
+  if (input.parsed === null || input.parsed.paywalled || text === undefined) {
     return partialResult(input.article, input.fallbackEvidence);
   }
 

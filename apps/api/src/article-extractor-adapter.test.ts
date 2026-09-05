@@ -272,6 +272,55 @@ describe("article extractor adapter", () => {
     });
   });
 
+  it("keeps fallback evidence for a subscription-required paywall", async () => {
+    const body = `
+      <html><body>
+        <article class="subscription-required"><h1>Nota para suscriptores</h1>
+          <p>${"Contenido accesible sólo para suscriptores. ".repeat(20)}</p>
+        </article>
+      </body></html>
+    `;
+    const adapter = createAdapter({ body });
+
+    const result = await adapter.extractArticle({
+      article,
+      fallbackEvidence,
+      options: { maxBytes: 20_000, maxRedirects: 1 },
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: { article, evidence: fallbackEvidence, extractionStatus: "partial" },
+    });
+  });
+
+  it("returns full text for a short valid article", async () => {
+    const body = `
+      <html><body><article><h1>Comunicado breve</h1>
+        <p>Artículo válido de menos de doscientos caracteres.</p>
+      </article></body></html>
+    `;
+    const adapter = createAdapter({ body });
+
+    const result = await adapter.extractArticle({
+      article,
+      fallbackEvidence,
+      options: { maxBytes: 20_000, maxRedirects: 1 },
+    });
+
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result.value.extractionStatus).toBe("full_text");
+      expect(result.value.evidence[0]).toMatchObject({
+        provenance: { contentKind: "extracted_body" },
+        quality: { contentLevel: "complete" },
+        text: expect.stringContaining(
+          "Artículo válido de menos de doscientos caracteres.",
+        ),
+      });
+    }
+  });
+
   it("extracts the publication date from a time element", async () => {
     const body = `
       <html><body><article><h1>Nota abierta</h1>
