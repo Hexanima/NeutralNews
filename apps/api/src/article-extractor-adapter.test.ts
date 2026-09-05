@@ -321,6 +321,34 @@ describe("article extractor adapter", () => {
     }
   });
 
+  it("extracts full text from an editorial div without article or main", async () => {
+    const body = `
+      <html><body><div class="article-body"><h1>Título en un div</h1>
+        <p>Contenido editorial válido dentro de un contenedor div.</p>
+      </div></body></html>
+    `;
+    const adapter = createAdapter({ body });
+
+    const result = await adapter.extractArticle({
+      article,
+      fallbackEvidence,
+      options: { maxBytes: 20_000, maxRedirects: 1 },
+    });
+
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result.value.extractionStatus).toBe("full_text");
+      expect(result.value.article.title).toBe("Título en un div");
+      expect(result.value.evidence[0]).toMatchObject({
+        provenance: { contentKind: "extracted_body" },
+        quality: { contentLevel: "complete" },
+        text: expect.stringContaining(
+          "Contenido editorial válido dentro de un contenedor div.",
+        ),
+      });
+    }
+  });
+
   it("extracts the publication date from a time element", async () => {
     const body = `
       <html><body><article><h1>Nota abierta</h1>

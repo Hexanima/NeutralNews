@@ -136,10 +136,6 @@ const readJsonLd = (document) => Array.from(document.querySelectorAll('script[ty
 const parse = ({ html, resolvedUrl }) => {
   const dom = new JSDOM(html, { url: resolvedUrl });
   const document = dom.window.document;
-  const editorialRoot = document.querySelector("article, main");
-  if (editorialRoot === null) {
-    return null;
-  }
   const bodyText = asText(document.body?.textContent)?.toLowerCase() ?? "";
   const jsonLd = readJsonLd(document);
   const restrictedAccessSelector = [
