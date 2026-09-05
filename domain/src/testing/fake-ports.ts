@@ -232,6 +232,7 @@ export const createFakeArticleExtractorPort = (
         ok({
           article: input.article,
           evidence: options.evidence ?? [],
+          extractionStatus: "partial",
         })
       );
     },
