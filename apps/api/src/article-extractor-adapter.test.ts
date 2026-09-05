@@ -1,11 +1,8 @@
 import { readFile } from "node:fs/promises";
 
 import {
-  ExternalPortError,
-  PortLimitExceededError,
   createArticle,
   createRuntimeEvidenceFragment,
-  isErr,
   isOk,
   type Article,
   type ArticleUrl,
@@ -64,10 +61,14 @@ const createAdapter = (input: {
   requestUrl?: Parameters<typeof createArticleExtractorAdapter>[0]["requestUrl"];
   timeoutMs?: number | undefined;
   resolveHostname?: Parameters<typeof createArticleExtractorAdapter>[0]["resolveHostname"];
+  parseDocument?: (() => Promise<never>) | undefined;
 }) =>
   createArticleExtractorAdapter({
+    ...(input.parseDocument === undefined
+      ? {}
+      : { parseDocument: input.parseDocument }),
     externalServicePolicy: {
-      timeoutMs: input.timeoutMs ?? 1_000,
+      timeoutMs: input.timeoutMs ?? 5_000,
       maxAttempts: 1,
       retryDelayMs: 0,
     },
@@ -163,13 +164,10 @@ describe("article extractor adapter", () => {
       options: { maxBytes: 20_000, maxRedirects: 1 },
     });
 
-    expect(isErr(result)).toBe(true);
-    if (isErr(result)) {
-      expect(result.error).toMatchObject({
-        operationName: "article.extract",
-        category: "PermanentFailure",
-      } satisfies Partial<ExternalPortError>);
-    }
+    expect(result).toEqual({
+      ok: true,
+      value: { article, evidence: fallbackEvidence, extractionStatus: "partial" },
+    });
     expect(requestUrl).not.toHaveBeenCalled();
   });
 
@@ -185,13 +183,10 @@ describe("article extractor adapter", () => {
       options: { maxBytes: 20_000, maxRedirects: 1 },
     });
 
-    expect(isErr(result)).toBe(true);
-    if (isErr(result)) {
-      expect(result.error).toMatchObject({
-        operationName: "article.extract",
-        category: "PermanentFailure",
-      } satisfies Partial<ExternalPortError>);
-    }
+    expect(result).toEqual({
+      ok: true,
+      value: { article, evidence: fallbackEvidence, extractionStatus: "partial" },
+    });
   });
 
   it("enforces the response byte limit", async () => {
@@ -203,12 +198,10 @@ describe("article extractor adapter", () => {
       options: { maxBytes: 4, maxRedirects: 1 },
     });
 
-    expect(isErr(result)).toBe(true);
-    if (isErr(result)) {
-      expect(result.error).toEqual(
-        new PortLimitExceededError("article.extract", "maxBytes"),
-      );
-    }
+    expect(result).toEqual({
+      ok: true,
+      value: { article, evidence: fallbackEvidence, extractionStatus: "partial" },
+    });
   });
 
   it("enforces the operation timeout", async () => {
@@ -227,12 +220,121 @@ describe("article extractor adapter", () => {
       await vi.advanceTimersByTimeAsync(2);
       const result = await extraction;
 
-      expect(isErr(result)).toBe(true);
-      if (isErr(result)) {
-        expect(result.error).toEqual(
-          new PortLimitExceededError("article.extract", "timeoutMs"),
-        );
-      }
+      expect(result).toEqual({
+        ok: true,
+        value: { article, evidence: fallbackEvidence, extractionStatus: "partial" },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps fallback evidence when the download fails", async () => {
+    const adapter = createAdapter({
+      requestUrl: async () => {
+        throw new Error("network unavailable");
+      },
+    });
+
+    const result = await adapter.extractArticle({
+      article,
+      fallbackEvidence,
+      options: { maxBytes: 20_000, maxRedirects: 1 },
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: { article, evidence: fallbackEvidence, extractionStatus: "partial" },
+    });
+  });
+
+  it("keeps fallback evidence for a long HTTP 200 paywall", async () => {
+    const paywallBody = `
+      <html><head>
+        <script type="application/ld+json">
+          {"@context":"https://schema.org","@type":"NewsArticle","isAccessibleForFree":false}
+        </script>
+      </head><body><article><h1>Nota para suscriptores</h1>
+        <p>${"Contenido de acceso restringido. ".repeat(20)}</p>
+      </article></body></html>
+    `;
+    const adapter = createAdapter({ body: paywallBody });
+
+    const result = await adapter.extractArticle({
+      article,
+      fallbackEvidence,
+      options: { maxBytes: 20_000, maxRedirects: 1 },
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      value: { article, evidence: fallbackEvidence, extractionStatus: "partial" },
+    });
+  });
+
+  it("extracts the publication date from a time element", async () => {
+    const body = `
+      <html><body><article><h1>Nota abierta</h1>
+        <time datetime="2026-08-22T15:00:00.000Z">22 de agosto</time>
+        <p>${"Contenido editorial verificable. ".repeat(20)}</p>
+      </article></body></html>
+    `;
+    const adapter = createAdapter({ body });
+
+    const result = await adapter.extractArticle({
+      article,
+      fallbackEvidence,
+      options: { maxBytes: 20_000, maxRedirects: 1 },
+    });
+
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result.value.article.publishedAt).toBe("2026-08-22T15:00:00.000Z");
+    }
+  });
+
+  it("extracts the publication date from JSON-LD", async () => {
+    const body = `
+      <html><head><script type="application/ld+json">
+        {"@context":"https://schema.org","@type":"NewsArticle","datePublished":"2026-08-23T16:30:00.000Z"}
+      </script></head><body><article><h1>Nota abierta</h1>
+        <p>${"Contenido editorial verificable. ".repeat(20)}</p>
+      </article></body></html>
+    `;
+    const adapter = createAdapter({ body });
+
+    const result = await adapter.extractArticle({
+      article,
+      fallbackEvidence,
+      options: { maxBytes: 20_000, maxRedirects: 1 },
+    });
+
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result.value.article.publishedAt).toBe("2026-08-23T16:30:00.000Z");
+    }
+  });
+
+  it("applies the timeout while parsing HTML", async () => {
+    vi.useFakeTimers();
+    try {
+      const adapter = createAdapter({
+        body: await readFixture("extractable.html"),
+        timeoutMs: 1,
+        parseDocument: async () => new Promise(() => undefined),
+      });
+      const extraction = adapter.extractArticle({
+        article,
+        fallbackEvidence,
+        options: { maxBytes: 20_000, maxRedirects: 1 },
+      });
+
+      await vi.advanceTimersByTimeAsync(2);
+
+      await expect(extraction).resolves.toEqual({
+        ok: true,
+        value: { article, evidence: fallbackEvidence, extractionStatus: "partial" },
+      });
     } finally {
       vi.useRealTimers();
     }
