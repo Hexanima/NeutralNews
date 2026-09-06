@@ -143,3 +143,13 @@ describe("article topic matching field coherence", () => {
       .toEqual([]);
   });
 });
+
+describe("article topic matching RSS coverage", () => {
+  it("keeps two non-contiguous query terms found in an RSS summary", () => {
+    const candidate = { id: "22222222-2222-4222-8222-222222222221", sourceId: "11111111-1111-4111-8111-111111111111", url: "https://example.com/congreso", title: "El Congreso sesiona hoy", language: "es-ar" } as never;
+    const summary = { id: "33333333-3333-4333-8333-333333333331", text: "La reforma genera un conflicto laboral", provenance: { articleId: candidate.id, sourceId: candidate.sourceId, url: candidate.url, contentKind: "rss_summary" }, quality: { contentLevel: "partial" } } as never;
+
+    expect(filterArticlesByTopic({ query: "reforma laboral", articles: [candidate], evidence: [summary] }).articles)
+      .toEqual([candidate]);
+  });
+});

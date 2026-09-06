@@ -152,7 +152,7 @@ export const filterArticlesByTopic = ({
 
     const score = Math.min(
       100,
-      titleMatches * 20 + summaryMatches * 10 + (titlePhrase ? 40 : 0) + (!titlePhrase && summaryPhrase ? 30 : 0) + (titleEntity ? 35 : 0) + (!titleEntity && summaryEntity ? 25 : 0),
+      titleMatches * 20 + summaryMatches * 15 + (titlePhrase ? 40 : 0) + (!titlePhrase && summaryPhrase ? 30 : 0) + (titleEntity ? 35 : 0) + (!titleEntity && summaryEntity ? 25 : 0),
     );
 
     return score >= settings.minimumScore ? [{ article, score }] : [];
