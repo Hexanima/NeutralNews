@@ -213,6 +213,41 @@ describe("AI web search adapter", () => {
     }
   });
 
+  it("limits local extraction while retaining every consulted URL", async () => {
+    const aiProvider = createFakeAiGenerationPort({
+      citations: [
+        { url: "https://example.com/uno", title: "Uno" },
+        { url: "https://example.com/dos", title: "Dos" },
+        { url: "https://example.com/tres", title: "Tres" },
+      ],
+    });
+    const articleExtractor = createTestArticleExtractor();
+    const search = createAiWebSearchAdapter({
+      aiProvider,
+      articleExtractor,
+      configurationRepository: {
+        getEffectiveConfiguration: async () => ok(configuration),
+      },
+    });
+
+    const result = await search.search({
+      sourceScopes,
+      query: "presupuesto nacional",
+      options: { maxItems: 1 },
+    });
+
+    expect(isOk(result)).toBe(true);
+    expect(articleExtractor.calls.extractArticle).toHaveLength(1);
+    if (isOk(result)) {
+      expect(result.value.results).toHaveLength(1);
+      expect(result.value.consultedUrls).toEqual([
+        "https://example.com/uno",
+        "https://example.com/dos",
+        "https://example.com/tres",
+      ]);
+    }
+  });
+
   it("rejects unavailable AI configuration before calling the provider", async () => {
     const aiProvider = createFakeAiGenerationPort();
     const search = createAiWebSearchAdapter({

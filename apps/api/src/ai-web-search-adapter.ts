@@ -227,6 +227,11 @@ export const createAiWebSearchAdapter = ({
     }
 
     const results: WebSearchResult[] = [];
+    const maxExtractions = input.options?.maxItems === undefined
+      ? Infinity
+      : Math.max(0, Math.floor(input.options.maxItems));
+    let extractionCount = 0;
+
     for (const { citation, url } of citations) {
       if (url === null) {
         continue;
@@ -252,10 +257,15 @@ export const createAiWebSearchAdapter = ({
         continue;
       }
 
+      if (extractionCount >= maxExtractions) {
+        break;
+      }
+
       if (input.options?.signal?.aborted) {
         return err(new PortCancelledError(operationName));
       }
 
+      extractionCount += 1;
       const extraction = await articleExtractor.extractArticle({
         article,
         fallbackEvidence: [],
