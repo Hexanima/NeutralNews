@@ -144,7 +144,7 @@ export const filterArticlesByTopic = ({
       summaryPhrase ||
       titleEntity ||
       summaryEntity ||
-      matchingTerms.size >= 2;
+      titleTerms.size >= 2 || summaryTerms.size >= 2;
 
     if (!eligible) {
       return [];
