@@ -133,7 +133,10 @@ describe("AI web search adapter", () => {
           article: expect.objectContaining({ title: "Presupuesto" }),
           evidence: expect.objectContaining({
             text: "El cuerpo extraído pertenece a la fuente consultada.",
-            provenance: expect.objectContaining({ contentKind: "extracted_body" }),
+            provenance: expect.objectContaining({
+              contentKind: "extracted_body",
+              discoveryKind: "web_search",
+            }),
             quality: { contentLevel: "complete" },
           }),
         }),

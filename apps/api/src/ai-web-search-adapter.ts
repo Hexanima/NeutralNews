@@ -5,6 +5,7 @@ import {
   ExternalPortError,
   PortCancelledError,
   createArticle,
+  createRuntimeEvidenceFragment,
   err,
   ok,
   validateAiModelSelection,
@@ -87,9 +88,29 @@ const toWebSearchResult = (input: {
     item.provenance.contentKind === "extracted_body",
   );
 
-  return evidence === undefined
-    ? null
-    : { source: input.source, article: input.extraction.article, evidence };
+  if (evidence === undefined) {
+    return null;
+  }
+
+  const webSearchEvidence = createRuntimeEvidenceFragment({
+    id: deterministicUuid(
+      input.extraction.article.id + ":web_search:" + evidence.provenance.contentKind,
+    ),
+    text: evidence.text,
+    provenance: {
+      ...evidence.provenance,
+      discoveryKind: "web_search",
+    },
+    quality: evidence.quality,
+  });
+
+  return webSearchEvidence.ok
+    ? {
+      source: input.source,
+      article: input.extraction.article,
+      evidence: webSearchEvidence.value,
+    }
+    : null;
 };
 
 const toArticleUrl = (value: string): ArticleUrl | null => {
