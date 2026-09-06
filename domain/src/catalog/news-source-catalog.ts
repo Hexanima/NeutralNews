@@ -9,12 +9,16 @@ import {
 } from "../entities/news-source.js";
 
 export type NewsSourceDiscovery =
-  | { readonly mode: "rss"; readonly feedUrl: ArticleUrl }
-  | { readonly mode: "search_only" };
+  | {
+      readonly mode: "rss";
+      readonly feedUrl: ArticleUrl;
+      readonly domains?: readonly string[] | undefined;
+    }
+  | { readonly mode: "search_only"; readonly domains?: readonly string[] | undefined };
 
 export type NewsSourceDiscoverySnapshot =
-  | { readonly mode: "rss"; readonly feedUrl: string }
-  | { readonly mode: "search_only" };
+  | { readonly mode: "rss"; readonly feedUrl: string; readonly domains?: readonly string[] | undefined }
+  | { readonly mode: "search_only"; readonly domains?: readonly string[] | undefined };
 
 export interface NewsSourceCatalogEntry {
   readonly source: NewsSource;
@@ -43,6 +47,7 @@ export type NewsSourceCatalogField =
   | "discovery"
   | "mode"
   | "feedUrl"
+  | "domains"
   | "id";
 
 export class InvalidNewsSourceCatalogValueError extends TaggedError<"InvalidNewsSourceCatalogValue"> {
@@ -109,6 +114,32 @@ const createFeedUrl = (
   }
 };
 
+const createDomains = (
+  value: unknown,
+): Result<readonly string[] | undefined, InvalidNewsSourceCatalogValueError> => {
+  if (value === undefined) {
+    return ok(undefined);
+  }
+
+  if (!Array.isArray(value) || value.length === 0 || value.some((domain) => typeof domain !== "string")) {
+    return err(invalidValue("domains", value));
+  }
+
+  const domains = value.map((domain) => domain.trim().toLowerCase().replace(/[.]$/, ""));
+
+  if (domains.some((domain) => {
+    try {
+      return domain === "" || new URL(`https://${domain}`).hostname !== domain;
+    } catch {
+      return true;
+    }
+  }) || new Set(domains).size !== domains.length) {
+    return err(invalidValue("domains", value));
+  }
+
+  return ok(domains);
+};
+
 const createDiscovery = (
   value: unknown,
 ): Result<NewsSourceDiscovery, InvalidNewsSourceCatalogValueError> => {
@@ -116,8 +147,17 @@ const createDiscovery = (
     return err(invalidValue("discovery", value));
   }
 
+  const domains = createDomains(value.domains);
+
+  if (!domains.ok) {
+    return domains;
+  }
+
   if (value.mode === "search_only") {
-    return ok({ mode: "search_only" });
+    return ok({
+      mode: "search_only",
+      ...(domains.value === undefined ? {} : { domains: domains.value }),
+    });
   }
 
   if (value.mode !== "rss") {
@@ -130,7 +170,11 @@ const createDiscovery = (
     return feedUrl;
   }
 
-  return ok({ mode: "rss", feedUrl: feedUrl.value });
+  return ok({
+    mode: "rss",
+    feedUrl: feedUrl.value,
+    ...(domains.value === undefined ? {} : { domains: domains.value }),
+  });
 };
 
 type CreatedCatalogEntry = {
