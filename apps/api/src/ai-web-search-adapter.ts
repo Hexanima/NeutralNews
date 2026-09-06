@@ -51,6 +51,7 @@ const toWebSearchResult = (input: {
   readonly source: NewsSource;
   readonly url: ArticleUrl;
   readonly title: string;
+  readonly snippet: string;
 }): WebSearchResult | null => {
   const article = createArticle({
     id: deterministicUuid(`${input.source.id}:${input.url}`),
@@ -66,7 +67,7 @@ const toWebSearchResult = (input: {
 
   const evidence = createRuntimeEvidenceFragment({
     id: deterministicUuid(`${article.value.id}:web_snippet`),
-    text: input.title,
+    text: input.snippet,
     provenance: {
       articleId: article.value.id,
       sourceId: input.source.id,
@@ -79,6 +80,14 @@ const toWebSearchResult = (input: {
   return evidence.ok
     ? { source: input.source, article: article.value, evidence: evidence.value }
     : null;
+};
+
+const snippetForCitation = (citation: {
+  readonly snippet?: string | undefined;
+}): string | null => {
+  const snippet = citation.snippet?.trim();
+
+  return snippet === undefined || snippet === "" ? null : snippet;
 };
 
 const toArticleUrl = (value: string): ArticleUrl | null => {
@@ -207,13 +216,14 @@ export const createAiWebSearchAdapter = ({
       }
 
       const source = sourceForUrl(url, input.sourceScopes);
+      const snippet = snippetForCitation(citation);
       const title = titleForCitation({ citation, url });
 
-      if (source === null) {
+      if (source === null || snippet === null) {
         return [];
       }
 
-      const result = toWebSearchResult({ source, url, title });
+      const result = toWebSearchResult({ source, url, title, snippet });
 
       return result === null ? [] : [result];
     });

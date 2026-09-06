@@ -55,12 +55,20 @@ const secondSource: NewsSource = {
 };
 
 describe("AI web search adapter", () => {
-  it("uses the active selection and turns every citation into web evidence", async () => {
+  it("uses each citation snippet as web evidence", async () => {
     const aiProvider = createFakeAiGenerationPort({
       webSearchText: "El Congreso debatió el presupuesto nacional.",
       citations: [
-        { url: "https://example.com/presupuesto", title: "Presupuesto" },
-        { url: "https://sub.example.com/debate", title: "Debate" },
+        {
+          url: "https://example.com/presupuesto",
+          title: "Presupuesto",
+          snippet: "El proyecto prevé cambios en las partidas.",
+        },
+        {
+          url: "https://sub.example.com/debate",
+          title: "Debate",
+          snippet: "La comisión inició el debate del proyecto.",
+        },
       ],
     });
     const search = createAiWebSearchAdapter({
@@ -98,11 +106,14 @@ describe("AI web search adapter", () => {
       expect(result.value.results).toHaveLength(2);
       expect(result.value.results.map((item) => item.source)).toEqual([source, source]);
       expect(result.value.results.map((item) => item.article.title)).toEqual(["Presupuesto", "Debate"]);
-      expect(result.value.results.map((item) => item.evidence.text)).toEqual(["Presupuesto", "Debate"]);
+      expect(result.value.results.map((item) => item.evidence.text)).toEqual([
+        "El proyecto prevé cambios en las partidas.",
+        "La comisión inició el debate del proyecto.",
+      ]);
       expect(result.value.results.map((item) => item.evidence)).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            text: "Presupuesto",
+            text: "El proyecto prevé cambios en las partidas.",
             provenance: expect.objectContaining({
               sourceId: source.id,
               contentKind: "web_snippet",
@@ -227,9 +238,9 @@ describe("AI web search adapter", () => {
     expect(aiProvider.calls.searchWeb).toEqual([]);
   });
 
-  it("uses the citation hostname when it has no title", async () => {
+  it("keeps citations without snippets as consulted URLs without evidence", async () => {
     const aiProvider = createFakeAiGenerationPort({
-      citations: [{ url: "https://example.com/presupuesto" }],
+      citations: [{ url: "https://example.com/presupuesto", snippet: "  " }],
     });
     const search = createAiWebSearchAdapter({
       aiProvider,
@@ -243,12 +254,7 @@ describe("AI web search adapter", () => {
     expect(result).toEqual({
       ok: true,
       value: {
-        results: [
-          expect.objectContaining({
-            article: expect.objectContaining({ title: "example.com" }),
-            evidence: expect.objectContaining({ text: "example.com" }),
-          }),
-        ],
+        results: [],
         consultedUrls: ["https://example.com/presupuesto"],
       },
     });
@@ -257,9 +263,21 @@ describe("AI web search adapter", () => {
   it("does not turn citations outside requested domain limits into evidence", async () => {
     const aiProvider = createFakeAiGenerationPort({
       citations: [
-        { url: "https://example.com/allowed", title: "Permitida" },
-        { url: "https://sub.example.com/blocked", title: "Bloqueada" },
-        { url: "https://other.example/outside", title: "Fuera de lista" },
+        {
+          url: "https://example.com/allowed",
+          title: "Permitida",
+          snippet: "Contenido permitido.",
+        },
+        {
+          url: "https://sub.example.com/blocked",
+          title: "Bloqueada",
+          snippet: "Contenido bloqueado.",
+        },
+        {
+          url: "https://other.example/outside",
+          title: "Fuera de lista",
+          snippet: "Contenido fuera de lista.",
+        },
       ],
     });
     const search = createAiWebSearchAdapter({
@@ -314,8 +332,16 @@ describe("AI web search adapter", () => {
   it("attributes each mapped domain to its matching source", async () => {
     const aiProvider = createFakeAiGenerationPort({
       citations: [
-        { url: "https://example.com/presupuesto", title: "Presupuesto" },
-        { url: "https://international.example/debate", title: "Debate" },
+        {
+          url: "https://example.com/presupuesto",
+          title: "Presupuesto",
+          snippet: "Contenido de Agencia Publica.",
+        },
+        {
+          url: "https://international.example/debate",
+          title: "Debate",
+          snippet: "Contenido de Agencia Internacional.",
+        },
       ],
     });
     const search = createAiWebSearchAdapter({
@@ -346,7 +372,7 @@ describe("AI web search adapter", () => {
     }
   });
 
-  it("uses citation-specific content instead of the generated search summary", async () => {
+  it("does not use the generated search summary when citations lack snippets", async () => {
     const aiProvider = createFakeAiGenerationPort({
       webSearchText: "Resumen generado que no pertenece a una fuente individual.",
       citations: [{ url: "https://example.com/presupuesto", title: "Presupuesto" }],
@@ -365,7 +391,8 @@ describe("AI web search adapter", () => {
 
     expect(isOk(result)).toBe(true);
     if (isOk(result)) {
-      expect(result.value.results[0]?.evidence.text).toBe("Presupuesto");
+      expect(result.value.results).toEqual([]);
+      expect(result.value.consultedUrls).toEqual(["https://example.com/presupuesto"]);
     }
   });
 
