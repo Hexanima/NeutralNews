@@ -22,6 +22,7 @@ import {
   type PortError,
   type RssFeedReaderPort,
   type WebSearchPort,
+  type WebSearchExtractionFailure,
   type WebSearchSourceScope,
 } from "../ports/index.js";
 import { err, ok } from "../types/result.js";
@@ -110,6 +111,16 @@ const selectCandidates = (
   const selectedBySource = new Map<UUID, number>();
   const selectedSources = new Set<UUID>();
   const selectedOrientations = new Set<NewsSourceOrientation>();
+  const selectedMediaSources = new Set<UUID>();
+  const availableMediaSourceCount = new Set(
+    candidates.flatMap(({ article }) =>
+      sourcesById.get(article.sourceId)?.type === "media" ? [article.sourceId] : []
+    ),
+  ).size;
+  const requiredMediaSourceCount = Math.min(
+    minimumSourceCount,
+    availableMediaSourceCount,
+  );
 
   while (selected.length < maximumArticleCount) {
     const eligible = remaining
@@ -123,16 +134,24 @@ const selectCandidates = (
     }
 
     eligible.sort((left, right) => {
-      const leftSource = sourcesById.get(left.candidate.article.sourceId);
-      const rightSource = sourcesById.get(right.candidate.article.sourceId);
-      const leftScore =
-        (leftSource?.type === "media" ? 4 : 0) +
-        (selectedSources.has(left.candidate.article.sourceId) ? 0 : 2) +
-        (classifiedOrientation(leftSource) === undefined || selectedOrientations.has(classifiedOrientation(leftSource)!) ? 0 : 1);
-      const rightScore =
-        (rightSource?.type === "media" ? 4 : 0) +
-        (selectedSources.has(right.candidate.article.sourceId) ? 0 : 2) +
-        (classifiedOrientation(rightSource) === undefined || selectedOrientations.has(classifiedOrientation(rightSource)!) ? 0 : 1);
+      const scoreFor = (input: { readonly candidate: Candidate }): number => {
+        const source = sourcesById.get(input.candidate.article.sourceId);
+        const sourceId = input.candidate.article.sourceId;
+        const orientation = classifiedOrientation(source);
+        const mediaScore = source?.type === "media" &&
+            !selectedMediaSources.has(sourceId) &&
+            selectedMediaSources.size < requiredMediaSourceCount
+          ? 4
+          : 0;
+        const sourceScore = selectedSources.has(sourceId) ? 0 : 2;
+        const orientationScore = orientation === undefined || selectedOrientations.has(orientation)
+          ? 0
+          : 1;
+
+        return mediaScore + sourceScore + orientationScore;
+      };
+      const leftScore = scoreFor(left);
+      const rightScore = scoreFor(right);
 
       return rightScore - leftScore || left.candidate.order - right.candidate.order;
     });
@@ -145,6 +164,9 @@ const selectCandidates = (
       (selectedBySource.get(selectedCandidate.candidate.article.sourceId) ?? 0) + 1,
     );
     selectedSources.add(selectedCandidate.candidate.article.sourceId);
+    if (sourcesById.get(selectedCandidate.candidate.article.sourceId)?.type === "media") {
+      selectedMediaSources.add(selectedCandidate.candidate.article.sourceId);
+    }
     const orientation = classifiedOrientation(
       sourcesById.get(selectedCandidate.candidate.article.sourceId),
     );
@@ -223,6 +245,12 @@ const partialExtractionFailure = (sourceId: UUID): HybridDiscoveryFailure => ({
   sourceId,
   errorType: "PartialExtraction",
 });
+
+const failureFromWebExtraction = (
+  failure: WebSearchExtractionFailure,
+): HybridDiscoveryFailure => failure.kind === "partial"
+  ? partialExtractionFailure(failure.sourceId)
+  : failureFromPort("extraction", failure.error, failure.sourceId);
 
 const isCancelled = (error: PortError): error is PortCancelledError =>
   error.type === "PortCancelled";
@@ -334,6 +362,9 @@ export const discoverHybridEvidenceUseCase: UseCase<
           failures.push(failureFromPort("web_search", search.error));
         } else {
           consultedUrls = search.value.consultedUrls;
+          failures.push(
+            ...(search.value.failedExtractions ?? []).map(failureFromWebExtraction),
+          );
           for (const result of search.value.results) {
             sourcesById.set(result.source.id, result.source);
           }

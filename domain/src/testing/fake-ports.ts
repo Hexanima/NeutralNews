@@ -247,6 +247,7 @@ export interface FakeWebSearchPortOptions {
   result?: Result<WebSearchResponse, PortError> | undefined;
   results?: WebSearchResponse["results"] | undefined;
   consultedUrls?: readonly ArticleUrl[] | undefined;
+  failedExtractions?: WebSearchResponse["failedExtractions"] | undefined;
 }
 
 export interface FakeWebSearchPort extends WebSearchPort {
@@ -270,6 +271,9 @@ export const createFakeWebSearchPort = (
         ok({
           results: options.results ?? [],
           consultedUrls: options.consultedUrls ?? [],
+          ...(options.failedExtractions === undefined
+            ? {}
+            : { failedExtractions: options.failedExtractions }),
         })
       );
     },

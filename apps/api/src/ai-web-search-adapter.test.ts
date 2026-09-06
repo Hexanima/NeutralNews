@@ -248,6 +248,58 @@ describe("AI web search adapter", () => {
     }
   });
 
+  it("continues extracting citations until it reaches the valid result limit", async () => {
+    const aiProvider = createFakeAiGenerationPort({
+      citations: [
+        { url: "https://example.com/uno", title: "Uno" },
+        { url: "https://example.com/dos", title: "Dos" },
+      ],
+    });
+    const successfulExtractor = createTestArticleExtractor();
+    const extractedUrls: string[] = [];
+    const articleExtractor = createFakeArticleExtractorPort();
+    articleExtractor.extractArticle = async (input) => {
+      extractedUrls.push(input.article.url);
+
+      return input.article.url === "https://example.com/uno"
+        ? err(new ExternalPortError("article.extract", "Timeout"))
+        : successfulExtractor.extractArticle(input);
+    };
+    const search = createAiWebSearchAdapter({
+      aiProvider,
+      articleExtractor,
+      configurationRepository: {
+        getEffectiveConfiguration: async () => ok(configuration),
+      },
+    });
+
+    const result = await search.search({
+      sourceScopes,
+      query: "presupuesto nacional",
+      options: { maxItems: 1 },
+    });
+
+    expect(extractedUrls).toEqual([
+      "https://example.com/uno",
+      "https://example.com/dos",
+    ]);
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        results: [
+          { article: { url: "https://example.com/dos" } },
+        ],
+        failedExtractions: [
+          {
+            sourceId: source.id,
+            kind: "error",
+            error: expect.objectContaining({ type: "ExternalPortError" }),
+          },
+        ],
+      },
+    });
+  });
+
   it("rejects unavailable AI configuration before calling the provider", async () => {
     const aiProvider = createFakeAiGenerationPort();
     const search = createAiWebSearchAdapter({
@@ -385,6 +437,9 @@ describe("AI web search adapter", () => {
       value: {
         results: [],
         consultedUrls: ["https://example.com/presupuesto"],
+        failedExtractions: [
+          { sourceId: source.id, kind: "partial" },
+        ],
       },
     });
   });
@@ -433,6 +488,9 @@ describe("AI web search adapter", () => {
       value: {
         results: [],
         consultedUrls: ["https://example.com/presupuesto"],
+        failedExtractions: [
+          { sourceId: source.id, kind: "partial" },
+        ],
       },
     });
   });

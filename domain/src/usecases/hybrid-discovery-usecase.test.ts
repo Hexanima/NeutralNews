@@ -228,6 +228,62 @@ describe("hybrid discovery use case", () => {
     expect(webSearch.calls.search).toEqual([]);
   });
 
+  it("prioritizes a new orientation after selecting three media", async () => {
+    const mediaEntries = [
+      createEntry("1", "izquierda"),
+      createEntry("2", "izquierda"),
+      createEntry("3", "izquierda"),
+    ];
+    const agencyEntry = createEntry("4", "derecha");
+    const entries = [
+      ...mediaEntries,
+      { ...agencyEntry, source: { ...agencyEntry.source, type: "agency" as const } },
+    ];
+    const articles = [
+      createArticle("1", mediaEntries[0]!.source.id),
+      createArticle("2", mediaEntries[0]!.source.id),
+      createArticle("3", mediaEntries[1]!.source.id),
+      createArticle("4", mediaEntries[1]!.source.id),
+      createArticle("5", mediaEntries[2]!.source.id),
+      createArticle("6", mediaEntries[2]!.source.id),
+      createArticle("7", agencyEntry.source.id),
+    ];
+    const rssFeedReader = createFakeRssFeedReaderPort();
+    rssFeedReader.readFeed = async (input) => {
+      const sourceArticles = articles.filter((article) => article.sourceId === input.source.id);
+
+      return ok({
+        sourceId: input.source.id,
+        feedUrl: input.feedUrl,
+        articles: sourceArticles,
+        evidence: sourceArticles.map((article, index) =>
+          createEvidence(String(index + 1), article),
+        ),
+      });
+    };
+    const webSearch = createFakeWebSearchPort();
+
+    const result = await discoverHybridEvidenceUseCase.execute(
+      {
+        rssFeedReader,
+        articleExtractor: createFakeArticleExtractorPort(),
+        webSearch,
+      },
+      { sources: entries, query: "reforma laboral" },
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        coverage: "complete",
+        articles: expect.arrayContaining([
+          expect.objectContaining({ sourceId: agencyEntry.source.id }),
+        ]),
+      },
+    });
+    expect(webSearch.calls.search).toEqual([]);
+  });
+
   it("limits media coverage requirements to active configured media", async () => {
     const entries = [
       createEntry("1", "izquierda"),
@@ -354,6 +410,33 @@ describe("hybrid discovery use case", () => {
           sourceId: entry.source.id,
           errorType: "PartialExtraction",
         })),
+      },
+    });
+  });
+
+  it("reports partial web extractions as failed sources", async () => {
+    const entries = [createEntry("1", "izquierda")];
+    const webSearch = createFakeWebSearchPort({
+      failedExtractions: [
+        { sourceId: entries[0]!.source.id, kind: "partial" },
+      ],
+    });
+
+    const result = await discoverHybridEvidenceUseCase.execute(
+      {
+        rssFeedReader: createFakeRssFeedReaderPort(),
+        articleExtractor: createFakeArticleExtractorPort(),
+        webSearch,
+      },
+      { sources: entries, query: "reforma laboral" },
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        failedSources: [
+          { stage: "extraction", sourceId: entries[0]!.source.id, errorType: "PartialExtraction" },
+        ],
       },
     });
   });

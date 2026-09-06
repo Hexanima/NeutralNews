@@ -8,6 +8,7 @@ import type {
   NewsSource,
   NewsSourceRegion,
 } from "../entities/news-source.js";
+import type { UUID } from "../types/uuid.js";
 import type { AsyncResult } from "../types/result.js";
 import type {
   LimitedPortOperationOptions,
@@ -20,6 +21,17 @@ export interface WebSearchResult {
   evidence: EvidenceFragment;
 }
 
+export type WebSearchExtractionFailure =
+  | {
+    readonly sourceId: UUID;
+    readonly kind: "partial";
+  }
+  | {
+    readonly sourceId: UUID;
+    readonly kind: "error";
+    readonly error: PortError;
+  };
+
 export interface WebSearchSourceScope {
   source: NewsSource;
   domains: readonly string[];
@@ -28,6 +40,7 @@ export interface WebSearchSourceScope {
 export interface WebSearchResponse {
   results: readonly WebSearchResult[];
   consultedUrls: readonly ArticleUrl[];
+  failedExtractions?: readonly WebSearchExtractionFailure[] | undefined;
 }
 
 export interface WebSearchPort {
