@@ -185,9 +185,14 @@ export const aggregateRssFeedsUseCase: UseCase<
           query: topicMatching.query,
           preferences: topicMatching.preferences,
         });
+    const filteredArticleIds = new Set(
+      filtered.articles.map((article) => article.id),
+    );
     const aggregation: AggregateRssFeedsResult = {
       ...filtered,
-      articleMergeGroups: deduplicated.articleMergeGroups,
+      articleMergeGroups: deduplicated.articleMergeGroups.filter((group) =>
+        filteredArticleIds.has(group.canonicalArticleId),
+      ),
       successfulFeeds: completedOutcomes.flatMap((outcome) =>
         outcome.ok ? [outcome.value] : [],
       ),
