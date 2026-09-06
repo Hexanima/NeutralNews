@@ -34,10 +34,11 @@ import {
 
 export type HybridDiscoveryCoverage = "complete" | "partial";
 export type HybridDiscoveryFailureStage = "rss" | "extraction" | "web_search";
+export type HybridDiscoveryFailureType = PortError["type"] | "PartialExtraction";
 
 export interface HybridDiscoveryFailure {
   readonly stage: HybridDiscoveryFailureStage;
-  readonly errorType: PortError["type"];
+  readonly errorType: HybridDiscoveryFailureType;
   readonly sourceId?: UUID | undefined;
   readonly operationName?: string | undefined;
   readonly category?: string | undefined;
@@ -159,20 +160,40 @@ const coverageFor = (
   articles: readonly Article[],
   sourcesById: ReadonlyMap<UUID, NewsSource>,
 ): HybridDiscoveryCoverage => {
-  const sourceIds = new Set(
+  const availableSources = [...sourcesById.values()].filter(
+    (source) => source.active && source.approvalStatus === "approved",
+  );
+  const requiredSourceCount = Math.min(
+    minimumSourceCount,
+    new Set(
+      availableSources
+        .filter((source) => source.type === "media")
+        .map((source) => source.id),
+    ).size,
+  );
+  const requiredOrientationCount = Math.min(
+    minimumOrientationCount,
+    new Set(
+      availableSources
+        .map(classifiedOrientation)
+        .filter((orientation): orientation is NewsSourceOrientation => orientation !== undefined),
+    ).size,
+  );
+  const mediaSourceIds = new Set(
     articles
       .filter((article) => sourcesById.get(article.sourceId)?.type === "media")
       .map((article) => article.sourceId),
   );
+  const selectedSourceIds = new Set(articles.map((article) => article.sourceId));
   const orientations = new Set(
-    [...sourceIds]
+    [...selectedSourceIds]
       .map((sourceId) => classifiedOrientation(sourcesById.get(sourceId)))
       .filter((orientation): orientation is NewsSourceOrientation => orientation !== undefined),
   );
 
   return articles.length >= minimumArticleCount &&
-    sourceIds.size >= minimumSourceCount &&
-    orientations.size >= minimumOrientationCount
+    mediaSourceIds.size >= requiredSourceCount &&
+    orientations.size >= requiredOrientationCount
     ? "complete"
     : "partial";
 };
@@ -195,6 +216,12 @@ const failureFromPort = (
   ...(sourceId === undefined ? {} : { sourceId }),
   ...("operationName" in error ? { operationName: error.operationName } : {}),
   ...("category" in error ? { category: error.category } : {}),
+});
+
+const partialExtractionFailure = (sourceId: UUID): HybridDiscoveryFailure => ({
+  stage: "extraction",
+  sourceId,
+  errorType: "PartialExtraction",
 });
 
 const isCancelled = (error: PortError): error is PortCancelledError =>
@@ -263,6 +290,10 @@ export const discoverHybridEvidenceUseCase: UseCase<
         extractedArticles.push(article);
         extractedEvidence = [...extractedEvidence, ...fallbackEvidence];
         continue;
+      }
+
+      if (extraction.value.extractionStatus === "partial") {
+        failures.push(partialExtractionFailure(article.sourceId));
       }
 
       extractedArticles.push(extraction.value.article);
