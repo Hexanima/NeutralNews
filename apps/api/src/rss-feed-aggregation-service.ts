@@ -1,6 +1,7 @@
 import {
   aggregateRssFeedsUseCase,
   type AggregateRssFeedsResult,
+  type ArticleTopicMatchingPreferences,
   type PortCancelledError,
   type Result,
   type RssFeedReaderPort,
@@ -21,6 +22,10 @@ export type RssFeedAggregationServiceError =
 export interface RssFeedAggregationServiceInput {
   readonly config: ApiConfig;
   readonly signal?: AbortSignal | undefined;
+  readonly topicMatching?: {
+    readonly query: string;
+    readonly preferences?: Partial<ArticleTopicMatchingPreferences> | undefined;
+  } | undefined;
   readonly repository?:
     | Pick<JsonNewsSourceConfigurationRepository, "getEffectiveConfiguration">
     | undefined;
@@ -30,6 +35,7 @@ export interface RssFeedAggregationServiceInput {
 export const aggregateConfiguredRssFeeds = async ({
   config,
   signal,
+  topicMatching,
   repository = createJsonNewsSourceConfigurationRepository(config.dataDirectory),
   rssFeedReader = createRssFeedReaderAdapter({
     externalServicePolicy: config.externalServices,
@@ -54,6 +60,7 @@ export const aggregateConfiguredRssFeeds = async ({
       deduplication: {
         trackingParameters: config.rssFeeds.trackingParameters,
       },
+      topicMatching,
     },
   );
 };

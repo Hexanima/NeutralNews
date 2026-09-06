@@ -95,7 +95,7 @@ export const filterArticlesByTopic = ({
     return { articles: [], evidence: [], candidates: [] };
   }
 
-  const phrase = terms.join(" ");
+  const phrase = normalizeTopicMatchText(query);
   const entities = entityTokens(query);
   const settings = normalizedPreferences(preferences);
   const summariesByArticleId = new Map<string, EvidenceFragment[]>();
