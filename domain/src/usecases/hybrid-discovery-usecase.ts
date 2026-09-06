@@ -247,10 +247,14 @@ export const discoverHybridEvidenceUseCase: UseCase<
       return err(new PortCancelledError(operationName));
     }
 
+    const approvedSources = payload.sources.filter(
+      ({ source }) => source.active && source.approvalStatus === "approved",
+    );
+
     const rss = await aggregateRssFeedsUseCase.execute(
       { rssFeedReader },
       {
-        sources: payload.sources,
+        sources: approvedSources,
         options: payload.options,
         deduplication: payload.deduplication,
         topicMatching: {

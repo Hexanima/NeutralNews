@@ -467,4 +467,43 @@ describe("hybrid discovery use case", () => {
       expect(result.error).toMatchObject({ type: "PortCancelled", operationName: "discovery.hybrid" });
     }
   });
+
+  it("does not read active RSS sources pending approval", async () => {
+    const approvedEntry = createEntry("1", "izquierda");
+    const pendingEntry = createEntry("2", "centro");
+    const entries = [
+      approvedEntry,
+      {
+        ...pendingEntry,
+        source: {
+          ...pendingEntry.source,
+          approvalStatus: "pending_review" as const,
+        },
+      },
+    ];
+    const readSourceIds: UUID[] = [];
+    const rssFeedReader = createFakeRssFeedReaderPort();
+    rssFeedReader.readFeed = async (input) => {
+      readSourceIds.push(input.source.id);
+
+      return ok({
+        sourceId: input.source.id,
+        feedUrl: input.feedUrl,
+        articles: [],
+        evidence: [],
+      });
+    };
+
+    await discoverHybridEvidenceUseCase.execute(
+      {
+        rssFeedReader,
+        articleExtractor: createFakeArticleExtractorPort(),
+        webSearch: createFakeWebSearchPort(),
+      },
+      { sources: entries, query: "reforma laboral" },
+    );
+
+    expect(readSourceIds).toEqual([approvedEntry.source.id]);
+  });
+
 });
