@@ -57,6 +57,7 @@ const entityTokens = (query: string): ReadonlySet<string> =>
   new Set(
     query
       .split(/\s+/)
+      .slice(1)
       .filter((token) => /^\p{Lu}/u.test(token))
       .map(normalizeTopicMatchText)
       .filter((token) => token !== "" && !lowInformationTokens.has(token)),

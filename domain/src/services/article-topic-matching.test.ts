@@ -73,3 +73,22 @@ describe("article topic matching selection", () => {
     }).articles).toEqual([]);
   });
 });
+describe("article topic matching entity detection", () => {
+  it("does not treat an initial capitalized common word as an entity", () => {
+    const article = {
+      id: "22222222-2222-4222-8222-222222222221",
+      sourceId: "11111111-1111-4111-8111-111111111111",
+      url: "https://example.com/reforma-educativa",
+      title: "Reforma educativa",
+      language: "es-ar",
+    } as never;
+
+    expect(
+      filterArticlesByTopic({
+        query: "Reforma laboral",
+        articles: [article],
+        evidence: [],
+      }).articles,
+    ).toEqual([]);
+  });
+});
