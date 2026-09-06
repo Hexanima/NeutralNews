@@ -36,10 +36,15 @@ const deterministicUuid = (seed: string): UUID => {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}` as UUID;
 };
 
-const titleForCitation = (citation: { readonly title?: string }): string | null => {
-  const title = citation.title?.trim();
+const titleForCitation = (input: {
+  readonly citation: { readonly title?: string };
+  readonly url: ArticleUrl;
+}): string => {
+  const title = input.citation.title?.trim();
 
-  return title === undefined || title === "" ? null : title;
+  return title === undefined || title === ""
+    ? hostnameForUrl(input.url)
+    : title;
 };
 
 const toWebSearchResult = (input: {
@@ -93,22 +98,41 @@ const toArticleUrl = (value: string): ArticleUrl | null => {
 const normalizeDomain = (domain: string): string =>
   domain.trim().toLowerCase().replace(/\.$/, "");
 
+const hostnameForUrl = (url: ArticleUrl): string =>
+  new URL(url).hostname.toLowerCase().replace(/[.]$/, "");
+
+const matchesDomain = (hostname: string, domain: string): boolean => {
+  const normalizedDomain = normalizeDomain(domain);
+
+  return normalizedDomain !== "" && (
+    hostname === normalizedDomain || hostname.endsWith("." + normalizedDomain)
+  );
+};
+
+const respectsDomainLimits = (input: {
+  readonly url: ArticleUrl;
+  readonly allowedDomains?: readonly string[] | undefined;
+  readonly blockedDomains?: readonly string[] | undefined;
+}): boolean => {
+  const hostname = hostnameForUrl(input.url);
+  const isAllowed = input.allowedDomains === undefined ||
+    input.allowedDomains.some((domain) => matchesDomain(hostname, domain));
+  const isBlocked = input.blockedDomains?.some((domain) => matchesDomain(hostname, domain)) ??
+    false;
+
+  return isAllowed && !isBlocked;
+};
+
 const sourceForUrl = (
   url: ArticleUrl,
   sourceScopes: Parameters<WebSearchPort["search"]>[0]["sourceScopes"],
 ): NewsSource | null => {
-  const hostname = new URL(url).hostname.toLowerCase().replace(/\.$/, "");
+  const hostname = hostnameForUrl(url);
   const matches = new Map<string, NewsSource>();
 
   for (const scope of sourceScopes) {
     if (
-      scope.domains.some((domain) => {
-        const normalizedDomain = normalizeDomain(domain);
-
-        return normalizedDomain !== "" && (
-          hostname === normalizedDomain || hostname.endsWith(`.${normalizedDomain}`)
-        );
-      })
+      scope.domains.some((domain) => matchesDomain(hostname, domain))
     ) {
       matches.set(scope.source.id, scope.source);
     }
@@ -143,6 +167,10 @@ export const createAiWebSearchAdapter = ({
       return selection;
     }
 
+    if (input.options?.signal?.aborted) {
+      return err(new PortCancelledError(operationName));
+    }
+
     const search = await aiProvider.searchWeb({
       selection: configuration.value.activeSelection,
       requiredCapabilities: ["web_search"],
@@ -170,10 +198,18 @@ export const createAiWebSearchAdapter = ({
         return [];
       }
 
-      const source = sourceForUrl(url, input.sourceScopes);
-      const title = titleForCitation(citation);
+      if (!respectsDomainLimits({
+        url,
+        allowedDomains: input.allowedDomains,
+        blockedDomains: input.blockedDomains,
+      })) {
+        return [];
+      }
 
-      if (source === null || title === null) {
+      const source = sourceForUrl(url, input.sourceScopes);
+      const title = titleForCitation({ citation, url });
+
+      if (source === null) {
         return [];
       }
 

@@ -201,7 +201,33 @@ describe("AI web search adapter", () => {
     expect(configurationReads).toBe(0);
   });
 
-  it("keeps cited URLs without results when citations have no source-specific content", async () => {
+  it("does not call the provider when cancellation occurs after configuration", async () => {
+    const controller = new AbortController();
+    const aiProvider = createFakeAiGenerationPort();
+    const search = createAiWebSearchAdapter({
+      aiProvider,
+      configurationRepository: {
+        getEffectiveConfiguration: async () => {
+          controller.abort();
+          return ok(configuration);
+        },
+      },
+    });
+
+    const result = await search.search({
+      sourceScopes,
+      query: "presupuesto nacional",
+      options: { signal: controller.signal },
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: expect.any(PortCancelledError),
+    });
+    expect(aiProvider.calls.searchWeb).toEqual([]);
+  });
+
+  it("uses the citation hostname when it has no title", async () => {
     const aiProvider = createFakeAiGenerationPort({
       citations: [{ url: "https://example.com/presupuesto" }],
     });
@@ -217,10 +243,48 @@ describe("AI web search adapter", () => {
     expect(result).toEqual({
       ok: true,
       value: {
-        results: [],
+        results: [
+          expect.objectContaining({
+            article: expect.objectContaining({ title: "example.com" }),
+            evidence: expect.objectContaining({ text: "example.com" }),
+          }),
+        ],
         consultedUrls: ["https://example.com/presupuesto"],
       },
     });
+  });
+
+  it("does not turn citations outside requested domain limits into evidence", async () => {
+    const aiProvider = createFakeAiGenerationPort({
+      citations: [
+        { url: "https://example.com/allowed", title: "Permitida" },
+        { url: "https://sub.example.com/blocked", title: "Bloqueada" },
+        { url: "https://other.example/outside", title: "Fuera de lista" },
+      ],
+    });
+    const search = createAiWebSearchAdapter({
+      aiProvider,
+      configurationRepository: {
+        getEffectiveConfiguration: async () => ok(configuration),
+      },
+    });
+
+    const result = await search.search({
+      sourceScopes: [{ source, domains: ["example.com", "other.example"] }],
+      query: "presupuesto nacional",
+      allowedDomains: ["EXAMPLE.COM."],
+      blockedDomains: ["sub.example.com"],
+    });
+
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result.value.consultedUrls).toEqual([
+        "https://example.com/allowed",
+        "https://sub.example.com/blocked",
+        "https://other.example/outside",
+      ]);
+      expect(result.value.results.map((item) => item.article.title)).toEqual(["Permitida"]);
+    }
   });
 
   it("keeps a citation from an unmapped domain without attributing it", async () => {
