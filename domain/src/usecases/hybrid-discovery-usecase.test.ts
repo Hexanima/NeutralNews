@@ -168,6 +168,53 @@ describe("hybrid discovery use case", () => {
     );
   });
 
+  it("treats agencies as insufficient media coverage and invokes web fallback", async () => {
+    const agencyEntry = createEntry("3", "derecha");
+    const entries = [
+      createEntry("1", "izquierda"),
+      createEntry("2", "centro"),
+      {
+        ...agencyEntry,
+        source: {
+          ...agencyEntry.source,
+          type: "agency" as const,
+        },
+      },
+    ];
+    const articles = entries.map((entry, index) =>
+      createArticle(String(index + 1), entry.source.id),
+    );
+    const evidence = articles.map((article, index) =>
+      createEvidence(String(index + 1), article),
+    );
+    const rssFeedReader = createFakeRssFeedReaderPort();
+    rssFeedReader.readFeed = async (input) => {
+      const index = entries.findIndex((entry) => entry.source.id === input.source.id);
+      return ok({
+        sourceId: input.source.id,
+        feedUrl: input.feedUrl,
+        articles: [articles[index]!],
+        evidence: [evidence[index]!],
+      });
+    };
+    const webSearch = createFakeWebSearchPort();
+
+    const result = await discoverHybridEvidenceUseCase.execute(
+      {
+        rssFeedReader,
+        articleExtractor: createFakeArticleExtractorPort(),
+        webSearch,
+      },
+      { sources: entries, query: "reforma laboral" },
+    );
+
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result.value.coverage).toBe("partial");
+    }
+    expect(webSearch.calls.search).toHaveLength(1);
+  });
+
   it("keeps valid RSS evidence and reports partial coverage when extraction and web search fail", async () => {
     const entries = [
       createEntry("1", "izquierda"),

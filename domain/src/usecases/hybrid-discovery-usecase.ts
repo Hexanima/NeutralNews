@@ -157,7 +157,11 @@ const coverageFor = (
   articles: readonly Article[],
   sourcesById: ReadonlyMap<UUID, NewsSource>,
 ): HybridDiscoveryCoverage => {
-  const sourceIds = new Set(articles.map((article) => article.sourceId));
+  const sourceIds = new Set(
+    articles
+      .filter((article) => sourcesById.get(article.sourceId)?.type === "media")
+      .map((article) => article.sourceId),
+  );
   const orientations = new Set(
     [...sourceIds]
       .map((sourceId) => classifiedOrientation(sourcesById.get(sourceId)))
