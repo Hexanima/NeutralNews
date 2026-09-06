@@ -14,7 +14,9 @@ import {
 } from "../ports/index.js";
 import {
   deduplicateArticles,
+  filterArticlesByTopic,
   type ArticleDeduplicationOptions,
+  type ArticleTopicMatchingPreferences,
   type ArticleMergeGroup,
 } from "../services/index.js";
 import { err, ok } from "../types/result.js";
@@ -29,6 +31,10 @@ export interface AggregateRssFeedsPayload {
   readonly sources: readonly NewsSourceCatalogEntry[];
   readonly options?: LimitedPortOperationOptions | undefined;
   readonly deduplication?: ArticleDeduplicationOptions | undefined;
+  readonly topicMatching?: {
+    readonly query: string;
+    readonly preferences?: Partial<ArticleTopicMatchingPreferences> | undefined;
+  } | undefined;
 }
 
 export interface AggregateRssFeedSuccess {
@@ -107,7 +113,7 @@ export const aggregateRssFeedsUseCase: UseCase<
   AggregateRssFeedsResult,
   PortCancelledError
 > = {
-  execute: async ({ rssFeedReader }, { sources, options, deduplication }) => {
+  execute: async ({ rssFeedReader }, { sources, options, deduplication, topicMatching }) => {
     const signal = options?.signal;
 
     if (isSignalAborted(signal)) {
@@ -172,8 +178,21 @@ export const aggregateRssFeedsUseCase: UseCase<
       ),
       trackingParameters: deduplication?.trackingParameters,
     });
+    const filtered = topicMatching === undefined
+      ? deduplicated
+      : filterArticlesByTopic({
+          ...deduplicated,
+          query: topicMatching.query,
+          preferences: topicMatching.preferences,
+        });
+    const filteredArticleIds = new Set(
+      filtered.articles.map((article) => article.id),
+    );
     const aggregation: AggregateRssFeedsResult = {
-      ...deduplicated,
+      ...filtered,
+      articleMergeGroups: deduplicated.articleMergeGroups.filter((group) =>
+        filteredArticleIds.has(group.canonicalArticleId),
+      ),
       successfulFeeds: completedOutcomes.flatMap((outcome) =>
         outcome.ok ? [outcome.value] : [],
       ),

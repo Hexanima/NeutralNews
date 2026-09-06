@@ -193,3 +193,25 @@ describe("RSS feed aggregation service", () => {
     }
   });
 });
+
+describe("RSS feed aggregation topic matching", () => {
+  it("forwards topic matching to the configured aggregation", async () => {
+    const source = createRssEntry("1");
+    const article: Article = {
+      id: "22222222-2222-4222-8222-222222222221" as UUID,
+      sourceId: source.source.id,
+      url: "https://example.com/deportes" as ArticleUrl,
+      title: "Resultados deportivos del fin de semana",
+      language: "es-ar" as LanguageCode,
+      publishedAt: reviewedAt,
+    };
+    const result = await aggregateConfiguredRssFeeds({
+      config,
+      topicMatching: { query: "Ley de Medios" },
+      repository: { getEffectiveConfiguration: async () => ok({ schemaVersion: 1, configurationVersion: 1, cacheVersion: "test", sources: [source], sourceOverrides: [], regionalPreferences: defaultRegionalPreferences }) },
+      rssFeedReader: { readFeed: async (input) => ok({ sourceId: input.source.id, feedUrl: input.feedUrl, articles: [article], evidence: [] }) },
+    });
+
+    expect(result).toMatchObject({ ok: true, value: { articles: [] } });
+  });
+});

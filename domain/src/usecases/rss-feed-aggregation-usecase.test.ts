@@ -462,3 +462,37 @@ describe("aggregate RSS feeds use case", () => {
     }
   });
 });
+
+describe("RSS aggregation topic filtering", () => {
+  it("removes merge groups whose canonical article was discarded by topic matching", async () => {
+    const matchingSource = createRssEntry("1");
+    const matchingDuplicateSource = createRssEntry("2");
+    const discardedSource = createRssEntry("3");
+    const discardedDuplicateSource = createRssEntry("4");
+    const matching = { ...createArticle("1", matchingSource.source.id), title: "Reforma laboral en el Congreso" };
+    const matchingDuplicate = { ...createArticle("2", matchingDuplicateSource.source.id), url: "https://example.com/article-1?utm_source=feed" as ArticleUrl, title: matching.title };
+    const discarded = { ...createArticle("3", discardedSource.source.id), title: "Resultados deportivos" };
+    const discardedDuplicate = { ...createArticle("4", discardedDuplicateSource.source.id), url: "https://example.com/article-3?utm_source=feed" as ArticleUrl, title: discarded.title };
+    const rssFeedReader = createReader(new Map([
+      [matchingSource.source.id, ok({ sourceId: matchingSource.source.id, feedUrl: matchingSource.discovery.feedUrl, articles: [matching], evidence: [createEvidence("1", matching)] })],
+      [matchingDuplicateSource.source.id, ok({ sourceId: matchingDuplicateSource.source.id, feedUrl: matchingDuplicateSource.discovery.feedUrl, articles: [matchingDuplicate], evidence: [createEvidence("2", matchingDuplicate)] })],
+      [discardedSource.source.id, ok({ sourceId: discardedSource.source.id, feedUrl: discardedSource.discovery.feedUrl, articles: [discarded], evidence: [createEvidence("3", discarded)] })],
+      [discardedDuplicateSource.source.id, ok({ sourceId: discardedDuplicateSource.source.id, feedUrl: discardedDuplicateSource.discovery.feedUrl, articles: [discardedDuplicate], evidence: [createEvidence("4", discardedDuplicate)] })],
+    ]));
+
+    const result = await aggregateRssFeedsUseCase.execute(
+      { rssFeedReader },
+      {
+        sources: [matchingSource, matchingDuplicateSource, discardedSource, discardedDuplicateSource],
+        deduplication: { trackingParameters: ["utm_source"] },
+        topicMatching: { query: "reforma laboral" },
+      },
+    );
+
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result.value.articles.map((article) => article.id)).toEqual([matching.id]);
+      expect(result.value.articleMergeGroups.map((group) => group.canonicalArticleId)).toEqual([matching.id]);
+    }
+  });
+});
