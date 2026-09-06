@@ -208,6 +208,9 @@ export const createFakeRssFeedReaderPort = (
 
 export interface FakeArticleExtractorPortOptions {
   result?: Result<ArticleExtractionResult, PortError> | undefined;
+  resultForInput?: (
+    input: Parameters<ArticleExtractorPort["extractArticle"]>[0],
+  ) => Result<ArticleExtractionResult, PortError>;
   evidence?: readonly EvidenceFragment[] | undefined;
 }
 
@@ -228,6 +231,7 @@ export const createFakeArticleExtractorPort = (
       calls.extractArticle.push(input);
 
       return (
+        options.resultForInput?.(input) ??
         options.result ??
         ok({
           article: input.article,

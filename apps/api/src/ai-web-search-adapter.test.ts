@@ -4,7 +4,9 @@ import {
   ExternalPortError,
   InvalidAiProviderConfigurationError,
   PortCancelledError,
+  createFakeArticleExtractorPort,
   createFakeAiGenerationPort,
+  createRuntimeEvidenceFragment,
   err,
   initialAiProviderCatalogSnapshot,
   isOk,
@@ -54,25 +56,108 @@ const secondSource: NewsSource = {
   country: "UY" as CountryCode,
 };
 
+const extractedText = "Contenido extraído de la URL consultada.";
+
+const createTestArticleExtractor = () =>
+  createFakeArticleExtractorPort({
+    resultForInput: (input) => {
+      const evidence = createRuntimeEvidenceFragment({
+        id: "33333333-3333-4333-8333-333333333333",
+        text: extractedText,
+        provenance: {
+          articleId: input.article.id,
+          sourceId: input.article.sourceId,
+          url: input.article.url,
+          contentKind: "extracted_body",
+        },
+        quality: { contentLevel: "complete" },
+      });
+
+      if (!evidence.ok) {
+        throw evidence.error;
+      }
+
+      return ok({
+        article: input.article,
+        evidence: [evidence.value],
+        extractionStatus: "full_text" as const,
+      });
+    },
+  });
+
 describe("AI web search adapter", () => {
-  it("uses each citation snippet as web evidence", async () => {
+  it("extracts source content for OpenAI citations without snippets", async () => {
+    const aiProvider = createFakeAiGenerationPort({
+      citations: [{ url: "https://example.com/presupuesto", title: "Presupuesto" }],
+    });
+    const articleExtractor = createFakeArticleExtractorPort({
+      resultForInput: (input) => {
+        const evidence = createRuntimeEvidenceFragment({
+          id: "33333333-3333-4333-8333-333333333333",
+          text: "El cuerpo extraído pertenece a la fuente consultada.",
+          provenance: {
+            articleId: input.article.id,
+            sourceId: input.article.sourceId,
+            url: input.article.url,
+            contentKind: "extracted_body",
+          },
+          quality: { contentLevel: "complete" },
+        });
+
+        if (!evidence.ok) {
+          throw evidence.error;
+        }
+
+        return ok({
+          article: input.article,
+          evidence: [evidence.value],
+          extractionStatus: "full_text" as const,
+        });
+      },
+    } as never);
+    const search = createAiWebSearchAdapter({
+      aiProvider,
+      articleExtractor,
+      configurationRepository: {
+        getEffectiveConfiguration: async () => ok(configuration),
+      },
+    } as never);
+
+    const result = await search.search({ sourceScopes, query: "presupuesto nacional" });
+
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result.value.consultedUrls).toEqual(["https://example.com/presupuesto"]);
+      expect(result.value.results).toEqual([
+        expect.objectContaining({
+          article: expect.objectContaining({ title: "Presupuesto" }),
+          evidence: expect.objectContaining({
+            text: "El cuerpo extraído pertenece a la fuente consultada.",
+            provenance: expect.objectContaining({ contentKind: "extracted_body" }),
+            quality: { contentLevel: "complete" },
+          }),
+        }),
+      ]);
+    }
+  });
+
+  it("uses extracted source content as web evidence", async () => {
     const aiProvider = createFakeAiGenerationPort({
       webSearchText: "El Congreso debatió el presupuesto nacional.",
       citations: [
         {
           url: "https://example.com/presupuesto",
           title: "Presupuesto",
-          snippet: "El proyecto prevé cambios en las partidas.",
         },
         {
           url: "https://sub.example.com/debate",
           title: "Debate",
-          snippet: "La comisión inició el debate del proyecto.",
         },
       ],
     });
     const search = createAiWebSearchAdapter({
       aiProvider,
+      articleExtractor: createTestArticleExtractor(),
       configurationRepository: {
         getEffectiveConfiguration: async () => ok(configuration),
       },
@@ -107,18 +192,18 @@ describe("AI web search adapter", () => {
       expect(result.value.results.map((item) => item.source)).toEqual([source, source]);
       expect(result.value.results.map((item) => item.article.title)).toEqual(["Presupuesto", "Debate"]);
       expect(result.value.results.map((item) => item.evidence.text)).toEqual([
-        "El proyecto prevé cambios en las partidas.",
-        "La comisión inició el debate del proyecto.",
+        extractedText,
+        extractedText,
       ]);
       expect(result.value.results.map((item) => item.evidence)).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            text: "El proyecto prevé cambios en las partidas.",
+            text: extractedText,
             provenance: expect.objectContaining({
               sourceId: source.id,
-              contentKind: "web_snippet",
+              contentKind: "extracted_body",
             }),
-            quality: { contentLevel: "partial" },
+            quality: { contentLevel: "complete" },
           }),
         ]),
       );
@@ -129,6 +214,7 @@ describe("AI web search adapter", () => {
     const aiProvider = createFakeAiGenerationPort();
     const search = createAiWebSearchAdapter({
       aiProvider,
+      articleExtractor: createTestArticleExtractor(),
       configurationRepository: {
         getEffectiveConfiguration: async () =>
           err(new InvalidAiProviderConfigurationError([])),
@@ -148,6 +234,7 @@ describe("AI web search adapter", () => {
     const aiProvider = createFakeAiGenerationPort();
     const search = createAiWebSearchAdapter({
       aiProvider,
+      articleExtractor: createTestArticleExtractor(),
       configurationRepository: {
         getEffectiveConfiguration: async () =>
           ok({
@@ -175,6 +262,7 @@ describe("AI web search adapter", () => {
     const aiProvider = createFakeAiGenerationPort({ webSearchResult: err(failure) });
     const search = createAiWebSearchAdapter({
       aiProvider,
+      articleExtractor: createTestArticleExtractor(),
       configurationRepository: {
         getEffectiveConfiguration: async () => ok(configuration),
       },
@@ -191,6 +279,7 @@ describe("AI web search adapter", () => {
     controller.abort();
     const search = createAiWebSearchAdapter({
       aiProvider: createFakeAiGenerationPort(),
+      articleExtractor: createTestArticleExtractor(),
       configurationRepository: {
         getEffectiveConfiguration: async () => {
           configurationReads += 1;
@@ -217,6 +306,7 @@ describe("AI web search adapter", () => {
     const aiProvider = createFakeAiGenerationPort();
     const search = createAiWebSearchAdapter({
       aiProvider,
+      articleExtractor: createTestArticleExtractor(),
       configurationRepository: {
         getEffectiveConfiguration: async () => {
           controller.abort();
@@ -238,12 +328,61 @@ describe("AI web search adapter", () => {
     expect(aiProvider.calls.searchWeb).toEqual([]);
   });
 
-  it("keeps citations without snippets as consulted URLs without evidence", async () => {
+  it("keeps citations with partial extraction as consulted URLs without evidence", async () => {
     const aiProvider = createFakeAiGenerationPort({
-      citations: [{ url: "https://example.com/presupuesto", snippet: "  " }],
+      citations: [{ url: "https://example.com/presupuesto" }],
     });
     const search = createAiWebSearchAdapter({
       aiProvider,
+      articleExtractor: createFakeArticleExtractorPort(),
+      configurationRepository: {
+        getEffectiveConfiguration: async () => ok(configuration),
+      },
+    });
+
+    const result = await search.search({ sourceScopes, query: "presupuesto nacional" });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        results: [],
+        consultedUrls: ["https://example.com/presupuesto"],
+      },
+    });
+  });
+
+  it("does not return evidence from a partial extraction", async () => {
+    const aiProvider = createFakeAiGenerationPort({
+      citations: [{ url: "https://example.com/presupuesto", title: "Presupuesto" }],
+    });
+    const articleExtractor = createFakeArticleExtractorPort({
+      resultForInput: (input) => {
+        const evidence = createRuntimeEvidenceFragment({
+          id: "33333333-3333-4333-8333-333333333333",
+          text: "Texto que no debe usarse sin extracción completa.",
+          provenance: {
+            articleId: input.article.id,
+            sourceId: input.article.sourceId,
+            url: input.article.url,
+            contentKind: "extracted_body",
+          },
+          quality: { contentLevel: "complete" },
+        });
+
+        if (!evidence.ok) {
+          throw evidence.error;
+        }
+
+        return ok({
+          article: input.article,
+          evidence: [evidence.value],
+          extractionStatus: "partial" as const,
+        });
+      },
+    });
+    const search = createAiWebSearchAdapter({
+      aiProvider,
+      articleExtractor,
       configurationRepository: {
         getEffectiveConfiguration: async () => ok(configuration),
       },
@@ -266,22 +405,20 @@ describe("AI web search adapter", () => {
         {
           url: "https://example.com/allowed",
           title: "Permitida",
-          snippet: "Contenido permitido.",
         },
         {
           url: "https://sub.example.com/blocked",
           title: "Bloqueada",
-          snippet: "Contenido bloqueado.",
         },
         {
           url: "https://other.example/outside",
           title: "Fuera de lista",
-          snippet: "Contenido fuera de lista.",
         },
       ],
     });
     const search = createAiWebSearchAdapter({
       aiProvider,
+      articleExtractor: createTestArticleExtractor(),
       configurationRepository: {
         getEffectiveConfiguration: async () => ok(configuration),
       },
@@ -312,6 +449,7 @@ describe("AI web search adapter", () => {
     });
     const search = createAiWebSearchAdapter({
       aiProvider,
+      articleExtractor: createTestArticleExtractor(),
       configurationRepository: {
         getEffectiveConfiguration: async () => ok(configuration),
       },
@@ -335,17 +473,16 @@ describe("AI web search adapter", () => {
         {
           url: "https://example.com/presupuesto",
           title: "Presupuesto",
-          snippet: "Contenido de Agencia Publica.",
         },
         {
           url: "https://international.example/debate",
           title: "Debate",
-          snippet: "Contenido de Agencia Internacional.",
         },
       ],
     });
     const search = createAiWebSearchAdapter({
       aiProvider,
+      articleExtractor: createTestArticleExtractor(),
       configurationRepository: {
         getEffectiveConfiguration: async () => ok(configuration),
       },
@@ -372,13 +509,14 @@ describe("AI web search adapter", () => {
     }
   });
 
-  it("does not use the generated search summary when citations lack snippets", async () => {
+  it("does not use the generated search summary when extraction is partial", async () => {
     const aiProvider = createFakeAiGenerationPort({
       webSearchText: "Resumen generado que no pertenece a una fuente individual.",
       citations: [{ url: "https://example.com/presupuesto", title: "Presupuesto" }],
     });
     const search = createAiWebSearchAdapter({
       aiProvider,
+      articleExtractor: createFakeArticleExtractorPort(),
       configurationRepository: {
         getEffectiveConfiguration: async () => ok(configuration),
       },
@@ -403,6 +541,7 @@ describe("AI web search adapter", () => {
     });
     const search = createAiWebSearchAdapter({
       aiProvider,
+      articleExtractor: createTestArticleExtractor(),
       configurationRepository: {
         getEffectiveConfiguration: async () => ok(configuration),
       },

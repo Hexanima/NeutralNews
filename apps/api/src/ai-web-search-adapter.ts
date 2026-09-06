@@ -5,11 +5,13 @@ import {
   ExternalPortError,
   PortCancelledError,
   createArticle,
-  createRuntimeEvidenceFragment,
   err,
   ok,
   validateAiModelSelection,
   type AiGenerationPort,
+  type Article,
+  type ArticleExtractionResult,
+  type ArticleExtractorPort,
   type ArticleUrl,
   type NewsSource,
   type UUID,
@@ -21,6 +23,7 @@ import type { JsonAiProviderConfigurationRepository } from "./ai-provider-config
 
 export interface AiWebSearchAdapterOptions {
   readonly aiProvider: AiGenerationPort;
+  readonly articleExtractor: ArticleExtractorPort;
   readonly configurationRepository: Pick<
     JsonAiProviderConfigurationRepository,
     "getEffectiveConfiguration"
@@ -47,47 +50,46 @@ const titleForCitation = (input: {
     : title;
 };
 
-const toWebSearchResult = (input: {
+const createArticleForCitation = (input: {
   readonly source: NewsSource;
   readonly url: ArticleUrl;
   readonly title: string;
-  readonly snippet: string;
-}): WebSearchResult | null => {
+}): Article | null => {
   const article = createArticle({
-    id: deterministicUuid(`${input.source.id}:${input.url}`),
+    id: deterministicUuid(input.source.id + ":" + input.url),
     sourceId: input.source.id,
     url: input.url,
     title: input.title,
     language: input.source.language,
   });
 
-  if (!article.ok) {
+  return article.ok ? article.value : null;
+};
+
+const toWebSearchResult = (input: {
+  readonly source: NewsSource;
+  readonly requestedArticle: Article;
+  readonly extraction: ArticleExtractionResult;
+}): WebSearchResult | null => {
+  if (
+    input.extraction.extractionStatus !== "full_text" ||
+    input.extraction.article.id !== input.requestedArticle.id ||
+    input.extraction.article.sourceId !== input.source.id ||
+    input.extraction.article.url !== input.requestedArticle.url
+  ) {
     return null;
   }
 
-  const evidence = createRuntimeEvidenceFragment({
-    id: deterministicUuid(`${article.value.id}:web_snippet`),
-    text: input.snippet,
-    provenance: {
-      articleId: article.value.id,
-      sourceId: input.source.id,
-      url: article.value.url,
-      contentKind: "web_snippet",
-    },
-    quality: { contentLevel: "partial" },
-  });
+  const evidence = input.extraction.evidence.find((item) =>
+    item.provenance.articleId === input.extraction.article.id &&
+    item.provenance.sourceId === input.source.id &&
+    item.provenance.url === input.extraction.article.url &&
+    item.provenance.contentKind === "extracted_body",
+  );
 
-  return evidence.ok
-    ? { source: input.source, article: article.value, evidence: evidence.value }
-    : null;
-};
-
-const snippetForCitation = (citation: {
-  readonly snippet?: string | undefined;
-}): string | null => {
-  const snippet = citation.snippet?.trim();
-
-  return snippet === undefined || snippet === "" ? null : snippet;
+  return evidence === undefined
+    ? null
+    : { source: input.source, article: input.extraction.article, evidence };
 };
 
 const toArticleUrl = (value: string): ArticleUrl | null => {
@@ -152,6 +154,7 @@ const sourceForUrl = (
 
 export const createAiWebSearchAdapter = ({
   aiProvider,
+  articleExtractor,
   configurationRepository,
 }: AiWebSearchAdapterOptions): WebSearchPort => ({
   search: async (input) => {
@@ -202,9 +205,10 @@ export const createAiWebSearchAdapter = ({
       return err(new ExternalPortError(operationName, "PermanentFailure"));
     }
 
-    const results = citations.flatMap(({ citation, url }) => {
+    const results: WebSearchResult[] = [];
+    for (const { citation, url } of citations) {
       if (url === null) {
-        return [];
+        continue;
       }
 
       if (!respectsDomainLimits({
@@ -212,21 +216,47 @@ export const createAiWebSearchAdapter = ({
         allowedDomains: input.allowedDomains,
         blockedDomains: input.blockedDomains,
       })) {
-        return [];
+        continue;
       }
 
       const source = sourceForUrl(url, input.sourceScopes);
-      const snippet = snippetForCitation(citation);
       const title = titleForCitation({ citation, url });
 
-      if (source === null || snippet === null) {
-        return [];
+      if (source === null) {
+        continue;
       }
 
-      const result = toWebSearchResult({ source, url, title, snippet });
+      const article = createArticleForCitation({ source, url, title });
+      if (article === null) {
+        continue;
+      }
 
-      return result === null ? [] : [result];
-    });
+      if (input.options?.signal?.aborted) {
+        return err(new PortCancelledError(operationName));
+      }
+
+      const extraction = await articleExtractor.extractArticle({
+        article,
+        fallbackEvidence: [],
+        options: input.options,
+      });
+      if (!extraction.ok) {
+        if (extraction.error instanceof PortCancelledError) {
+          return extraction;
+        }
+
+        continue;
+      }
+
+      const result = toWebSearchResult({
+        source,
+        requestedArticle: article,
+        extraction: extraction.value,
+      });
+      if (result !== null) {
+        results.push(result);
+      }
+    }
 
     return ok({
       results,

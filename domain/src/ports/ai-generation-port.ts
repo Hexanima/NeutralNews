@@ -11,8 +11,6 @@ import type {
 export interface AiCitation {
   url: ArticleUrl;
   title?: string | undefined;
-  /** Text extracted from this URL; never provider aggregate output or metadata. */
-  snippet?: string | undefined;
 }
 
 export interface AiUsageMetrics {
