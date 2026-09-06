@@ -171,7 +171,7 @@ describe("domain ports", () => {
       options: { signal, timeoutMs: 1000, maxBytes: 8192 },
     });
     const searchResult = await search.search({
-      source,
+      sourceScopes: [{ source, domains: ["example.com"] }],
       query: "presupuesto nacional",
       language: "es-ar" as LanguageCode,
       region: "argentina",
@@ -192,7 +192,9 @@ describe("domain ports", () => {
     expect(extractor.calls.extractArticle[0]?.options?.maxBytes).toBe(8192);
     expect(search.calls.search[0]?.allowedDomains).toEqual(["example.com"]);
     expect(search.calls.search[0]?.blockedDomains).toEqual(["blocked.example"]);
-    expect(search.calls.search[0]?.source).toEqual(source);
+    expect(search.calls.search[0]?.sourceScopes).toEqual([
+      { source, domains: ["example.com"] },
+    ]);
   });
 
   it("allows external ports to receive redirect limits", () => {

@@ -10,6 +10,8 @@ import {
   ok,
   validateAiModelSelection,
   type AiGenerationPort,
+  type ArticleUrl,
+  type NewsSource,
   type UUID,
   type WebSearchPort,
   type WebSearchResult,
@@ -34,22 +36,22 @@ const deterministicUuid = (seed: string): UUID => {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}` as UUID;
 };
 
-const titleForCitation = (citation: { readonly url: string; readonly title?: string }) => {
+const titleForCitation = (citation: { readonly title?: string }): string | null => {
   const title = citation.title?.trim();
 
-  return title === undefined || title === "" ? new URL(citation.url).hostname : title;
+  return title === undefined || title === "" ? null : title;
 };
 
 const toWebSearchResult = (input: {
-  readonly source: Parameters<WebSearchPort["search"]>[0]["source"];
-  readonly text: string;
-  readonly citation: { readonly url: string; readonly title?: string };
+  readonly source: NewsSource;
+  readonly url: ArticleUrl;
+  readonly title: string;
 }): WebSearchResult | null => {
   const article = createArticle({
-    id: deterministicUuid(`${input.source.id}:${input.citation.url}`),
+    id: deterministicUuid(`${input.source.id}:${input.url}`),
     sourceId: input.source.id,
-    url: input.citation.url,
-    title: titleForCitation(input.citation),
+    url: input.url,
+    title: input.title,
     language: input.source.language,
   });
 
@@ -59,7 +61,7 @@ const toWebSearchResult = (input: {
 
   const evidence = createRuntimeEvidenceFragment({
     id: deterministicUuid(`${article.value.id}:web_snippet`),
-    text: input.text,
+    text: input.title,
     provenance: {
       articleId: article.value.id,
       sourceId: input.source.id,
@@ -72,6 +74,47 @@ const toWebSearchResult = (input: {
   return evidence.ok
     ? { source: input.source, article: article.value, evidence: evidence.value }
     : null;
+};
+
+const toArticleUrl = (value: string): ArticleUrl | null => {
+  const url = value.trim();
+
+  try {
+    const parsed = new URL(url);
+
+    return parsed.protocol === "http:" || parsed.protocol === "https:"
+      ? (url as ArticleUrl)
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+const normalizeDomain = (domain: string): string =>
+  domain.trim().toLowerCase().replace(/\.$/, "");
+
+const sourceForUrl = (
+  url: ArticleUrl,
+  sourceScopes: Parameters<WebSearchPort["search"]>[0]["sourceScopes"],
+): NewsSource | null => {
+  const hostname = new URL(url).hostname.toLowerCase().replace(/\.$/, "");
+  const matches = new Map<string, NewsSource>();
+
+  for (const scope of sourceScopes) {
+    if (
+      scope.domains.some((domain) => {
+        const normalizedDomain = normalizeDomain(domain);
+
+        return normalizedDomain !== "" && (
+          hostname === normalizedDomain || hostname.endsWith(`.${normalizedDomain}`)
+        );
+      })
+    ) {
+      matches.set(scope.source.id, scope.source);
+    }
+  }
+
+  return matches.size === 1 ? [...matches.values()][0] ?? null : null;
 };
 
 export const createAiWebSearchAdapter = ({
@@ -113,23 +156,35 @@ export const createAiWebSearchAdapter = ({
       return search;
     }
 
-    const text = search.value.text.trim();
+    const citations = search.value.citations.map((citation) => ({
+      citation,
+      url: toArticleUrl(citation.url),
+    }));
 
-    if (text === "" && search.value.citations.length > 0) {
+    if (citations.some(({ url }) => url === null)) {
       return err(new ExternalPortError(operationName, "PermanentFailure"));
     }
 
-    const results = text === ""
-      ? []
-      : search.value.citations.flatMap((citation) => {
-          const result = toWebSearchResult({ source: input.source, text, citation });
+    const results = citations.flatMap(({ citation, url }) => {
+      if (url === null) {
+        return [];
+      }
 
-          return result === null ? [] : [result];
-        });
+      const source = sourceForUrl(url, input.sourceScopes);
+      const title = titleForCitation(citation);
+
+      if (source === null || title === null) {
+        return [];
+      }
+
+      const result = toWebSearchResult({ source, url, title });
+
+      return result === null ? [] : [result];
+    });
 
     return ok({
       results,
-      consultedUrls: search.value.citations.map((citation) => citation.url),
+      consultedUrls: citations.flatMap(({ url }) => url === null ? [] : [url]),
     });
   },
 });

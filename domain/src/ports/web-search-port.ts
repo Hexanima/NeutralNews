@@ -15,9 +15,14 @@ import type {
 } from "./common.js";
 
 export interface WebSearchResult {
-  source?: NewsSource | undefined;
+  source: NewsSource;
   article: Article;
   evidence: EvidenceFragment;
+}
+
+export interface WebSearchSourceScope {
+  source: NewsSource;
+  domains: readonly string[];
 }
 
 export interface WebSearchResponse {
@@ -27,7 +32,7 @@ export interface WebSearchResponse {
 
 export interface WebSearchPort {
   search: (input: {
-    source: NewsSource;
+    sourceScopes: readonly WebSearchSourceScope[];
     query: string;
     language?: LanguageCode | undefined;
     region?: NewsSourceRegion | undefined;

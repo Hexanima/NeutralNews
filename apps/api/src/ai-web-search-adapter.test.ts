@@ -44,13 +44,23 @@ const configuration: EffectiveAiProviderConfiguration = {
   modelSynchronizations: [],
 };
 
+const sourceScopes = [{ source, domains: ["example.com"] }];
+
+const secondSource: NewsSource = {
+  ...source,
+  id: "22222222-2222-4222-8222-222222222222" as UUID,
+  name: "Agencia Internacional",
+  region: "international",
+  country: "UY" as CountryCode,
+};
+
 describe("AI web search adapter", () => {
   it("uses the active selection and turns every citation into web evidence", async () => {
     const aiProvider = createFakeAiGenerationPort({
       webSearchText: "El Congreso debatió el presupuesto nacional.",
       citations: [
         { url: "https://example.com/presupuesto", title: "Presupuesto" },
-        { url: "https://sub.example.com/debate" },
+        { url: "https://sub.example.com/debate", title: "Debate" },
       ],
     });
     const search = createAiWebSearchAdapter({
@@ -62,7 +72,7 @@ describe("AI web search adapter", () => {
     const signal = new AbortController().signal;
 
     const result = await search.search({
-      source,
+      sourceScopes,
       query: "presupuesto nacional",
       allowedDomains: ["example.com", "sub.example.com"],
       blockedDomains: ["blocked.example"],
@@ -87,14 +97,12 @@ describe("AI web search adapter", () => {
       ]);
       expect(result.value.results).toHaveLength(2);
       expect(result.value.results.map((item) => item.source)).toEqual([source, source]);
-      expect(result.value.results.map((item) => item.article.title)).toEqual([
-        "Presupuesto",
-        "sub.example.com",
-      ]);
+      expect(result.value.results.map((item) => item.article.title)).toEqual(["Presupuesto", "Debate"]);
+      expect(result.value.results.map((item) => item.evidence.text)).toEqual(["Presupuesto", "Debate"]);
       expect(result.value.results.map((item) => item.evidence)).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            text: "El Congreso debatió el presupuesto nacional.",
+            text: "Presupuesto",
             provenance: expect.objectContaining({
               sourceId: source.id,
               contentKind: "web_snippet",
@@ -116,7 +124,7 @@ describe("AI web search adapter", () => {
       },
     });
 
-    const result = await search.search({ source, query: "presupuesto nacional" });
+    const result = await search.search({ sourceScopes, query: "presupuesto nacional" });
 
     expect(result).toEqual({
       ok: false,
@@ -142,7 +150,7 @@ describe("AI web search adapter", () => {
       },
     });
 
-    const result = await search.search({ source, query: "presupuesto nacional" });
+    const result = await search.search({ sourceScopes, query: "presupuesto nacional" });
 
     expect(result).toEqual({
       ok: false,
@@ -161,7 +169,7 @@ describe("AI web search adapter", () => {
       },
     });
 
-    const result = await search.search({ source, query: "presupuesto nacional" });
+    const result = await search.search({ sourceScopes, query: "presupuesto nacional" });
 
     expect(result).toEqual({ ok: false, error: failure });
   });
@@ -181,7 +189,7 @@ describe("AI web search adapter", () => {
     });
 
     const result = await search.search({
-      source,
+      sourceScopes,
       query: "presupuesto nacional",
       options: { signal: controller.signal },
     });
@@ -193,7 +201,7 @@ describe("AI web search adapter", () => {
     expect(configurationReads).toBe(0);
   });
 
-  it("rejects cited results without text instead of inventing evidence", async () => {
+  it("keeps cited URLs without results when citations have no source-specific content", async () => {
     const aiProvider = createFakeAiGenerationPort({
       citations: [{ url: "https://example.com/presupuesto" }],
     });
@@ -204,9 +212,114 @@ describe("AI web search adapter", () => {
       },
     });
 
-    const result = await search.search({ source, query: "presupuesto nacional" });
+    const result = await search.search({ sourceScopes, query: "presupuesto nacional" });
 
     expect(result).toEqual({
+      ok: true,
+      value: {
+        results: [],
+        consultedUrls: ["https://example.com/presupuesto"],
+      },
+    });
+  });
+
+  it("keeps a citation from an unmapped domain without attributing it", async () => {
+    const aiProvider = createFakeAiGenerationPort({
+      webSearchText: "Resumen de búsqueda.",
+      citations: [{ url: "https://external.example/noticia", title: "Cobertura externa" }],
+    });
+    const search = createAiWebSearchAdapter({
+      aiProvider,
+      configurationRepository: {
+        getEffectiveConfiguration: async () => ok(configuration),
+      },
+    });
+
+    const result = await search.search({
+      sourceScopes,
+      query: "presupuesto nacional",
+    });
+
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result.value.consultedUrls).toEqual(["https://external.example/noticia"]);
+      expect(result.value.results).toEqual([]);
+    }
+  });
+
+  it("attributes each mapped domain to its matching source", async () => {
+    const aiProvider = createFakeAiGenerationPort({
+      citations: [
+        { url: "https://example.com/presupuesto", title: "Presupuesto" },
+        { url: "https://international.example/debate", title: "Debate" },
+      ],
+    });
+    const search = createAiWebSearchAdapter({
+      aiProvider,
+      configurationRepository: {
+        getEffectiveConfiguration: async () => ok(configuration),
+      },
+    });
+
+    const result = await search.search({
+      sourceScopes: [
+        { source, domains: ["example.com"] },
+        { source: secondSource, domains: ["international.example"] },
+      ],
+      query: "presupuesto nacional",
+    });
+
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result.value.results.map((item) => item.source.id)).toEqual([
+        source.id,
+        secondSource.id,
+      ]);
+      expect(result.value.results.map((item) => item.evidence.provenance.sourceId)).toEqual([
+        source.id,
+        secondSource.id,
+      ]);
+    }
+  });
+
+  it("uses citation-specific content instead of the generated search summary", async () => {
+    const aiProvider = createFakeAiGenerationPort({
+      webSearchText: "Resumen generado que no pertenece a una fuente individual.",
+      citations: [{ url: "https://example.com/presupuesto", title: "Presupuesto" }],
+    });
+    const search = createAiWebSearchAdapter({
+      aiProvider,
+      configurationRepository: {
+        getEffectiveConfiguration: async () => ok(configuration),
+      },
+    });
+
+    const result = await search.search({
+      sourceScopes,
+      query: "presupuesto nacional",
+    });
+
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result.value.results[0]?.evidence.text).toBe("Presupuesto");
+    }
+  });
+
+  it("normalizes malformed provider URLs as a Result error", async () => {
+    const aiProvider = createFakeAiGenerationPort({
+      webSearchText: "Resumen de búsqueda.",
+      citations: [{ url: "not a valid URL" as never, title: "Inválida" }],
+    });
+    const search = createAiWebSearchAdapter({
+      aiProvider,
+      configurationRepository: {
+        getEffectiveConfiguration: async () => ok(configuration),
+      },
+    });
+
+    await expect(
+      search.search({ sourceScopes, query: "presupuesto nacional" }),
+    ).resolves.toEqual({
       ok: false,
       error: expect.objectContaining({
         type: "ExternalPortError",
