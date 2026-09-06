@@ -125,9 +125,11 @@ const selectCandidates = (
       const leftSource = sourcesById.get(left.candidate.article.sourceId);
       const rightSource = sourcesById.get(right.candidate.article.sourceId);
       const leftScore =
+        (leftSource?.type === "media" ? 4 : 0) +
         (selectedSources.has(left.candidate.article.sourceId) ? 0 : 2) +
         (classifiedOrientation(leftSource) === undefined || selectedOrientations.has(classifiedOrientation(leftSource)!) ? 0 : 1);
       const rightScore =
+        (rightSource?.type === "media" ? 4 : 0) +
         (selectedSources.has(right.candidate.article.sourceId) ? 0 : 2) +
         (classifiedOrientation(rightSource) === undefined || selectedOrientations.has(classifiedOrientation(rightSource)!) ? 0 : 1);
 

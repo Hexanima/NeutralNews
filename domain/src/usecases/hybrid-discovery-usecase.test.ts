@@ -168,6 +168,66 @@ describe("hybrid discovery use case", () => {
     );
   });
 
+  it("prioritizes media before non-media sources when RSS reaches the article limit", async () => {
+    const createTypedEntry = (
+      suffix: string,
+      orientation: NewsSource["orientation"],
+      type: NewsSource["type"],
+    ): NewsSourceCatalogEntry => {
+      const entry = createEntry(suffix, orientation);
+
+      return { ...entry, source: { ...entry.source, type } };
+    };
+    const entries = [
+      createTypedEntry("1", "izquierda", "agency"),
+      createTypedEntry("2", "centroizquierda", "primary_source"),
+      createTypedEntry("3", "centro", "agency"),
+      createTypedEntry("4", "derecha", "primary_source"),
+      createTypedEntry("5", "izquierda", "media"),
+      createTypedEntry("6", "centro", "media"),
+      createTypedEntry("7", "derecha", "media"),
+    ];
+    const articles = entries.map((entry, index) =>
+      createArticle(String(index + 1), entry.source.id),
+    );
+    const evidence = articles.map((article, index) =>
+      createEvidence(String(index + 1), article),
+    );
+    const rssFeedReader = createFakeRssFeedReaderPort();
+    rssFeedReader.readFeed = async (input) => {
+      const index = entries.findIndex((entry) => entry.source.id === input.source.id);
+
+      return ok({
+        sourceId: input.source.id,
+        feedUrl: input.feedUrl,
+        articles: [articles[index]!],
+        evidence: [evidence[index]!],
+      });
+    };
+    const webSearch = createFakeWebSearchPort();
+
+    const result = await discoverHybridEvidenceUseCase.execute(
+      {
+        rssFeedReader,
+        articleExtractor: createFakeArticleExtractorPort(),
+        webSearch,
+      },
+      { sources: entries, query: "reforma laboral" },
+    );
+
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result.value.coverage).toBe("complete");
+      expect(result.value.articles).toHaveLength(6);
+      expect(
+        result.value.articles.filter((article) =>
+          entries.find((entry) => entry.source.id === article.sourceId)?.source.type === "media",
+        ),
+      ).toHaveLength(3);
+    }
+    expect(webSearch.calls.search).toEqual([]);
+  });
+
   it("treats agencies as insufficient media coverage and invokes web fallback", async () => {
     const agencyEntry = createEntry("3", "derecha");
     const entries = [
