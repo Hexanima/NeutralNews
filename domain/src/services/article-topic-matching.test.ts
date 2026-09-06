@@ -40,7 +40,7 @@ describe("article topic matching selection", () => {
   }) as never;
 
   it("matches a named entity in the headline", () => {
-    const match = article("22222222-2222-4222-8222-222222222221", "Milei recibe a gobernadores");
+    const match = article("22222222-2222-4222-8222-222222222221", "Javier Milei recibe a gobernadores");
     const other = article("22222222-2222-4222-8222-222222222222", "El Gobierno prepara anuncios");
 
     expect(filterArticlesByTopic({ query: "Javier Milei", articles: [other, match], evidence: [] }).articles)
@@ -90,5 +90,35 @@ describe("article topic matching entity detection", () => {
         evidence: [],
       }).articles,
     ).toEqual([]);
+  });
+});
+
+describe("article topic matching false-positive regressions", () => {
+  const article = (id: string, title: string) => ({
+    id,
+    sourceId: "11111111-1111-4111-8111-111111111111",
+    url: `https://example.com/${id}`,
+    title,
+    language: "es-ar",
+  }) as never;
+
+  it("does not count the same query term in title and summary twice", () => {
+    const candidate = article("22222222-2222-4222-8222-222222222221", "Reforma administrativa");
+    const summary = {
+      id: "33333333-3333-4333-8333-333333333331",
+      text: "La reforma fue anunciada",
+      provenance: { articleId: candidate.id, sourceId: candidate.sourceId, url: candidate.url, contentKind: "rss_summary" },
+      quality: { contentLevel: "partial" },
+    } as never;
+
+    expect(filterArticlesByTopic({ query: "reforma laboral", articles: [candidate], evidence: [summary] }).articles)
+      .toEqual([]);
+  });
+
+  it("does not turn title-cased query terms into standalone entities", () => {
+    const candidate = article("22222222-2222-4222-8222-222222222221", "Laboral: nuevas medidas");
+
+    expect(filterArticlesByTopic({ query: "Reforma Laboral", articles: [candidate], evidence: [] }).articles)
+      .toEqual([]);
   });
 });

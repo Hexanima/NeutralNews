@@ -53,22 +53,35 @@ const significantTokens = (value: string): readonly string[] =>
 
 const tokenSet = (value: string): ReadonlySet<string> => new Set(tokens(value));
 
-const entityTokens = (query: string): ReadonlySet<string> =>
-  new Set(
-    query
-      .split(/\s+/)
-      .slice(1)
-      .filter((token) => /^\p{Lu}/u.test(token))
-      .map(normalizeTopicMatchText)
-      .filter((token) => token !== "" && !lowInformationTokens.has(token)),
-  );
+const entityPhrases = (query: string): readonly string[] => {
+  const phrases: string[] = [];
+  let current: string[] = [];
+
+  for (const token of query.split(/\s+/)) {
+    if (/^\p{Lu}/u.test(token)) {
+      current.push(token);
+      continue;
+    }
+
+    if (current.length >= 2) {
+      phrases.push(normalizeTopicMatchText(current.join(" ")));
+    }
+    current = [];
+  }
+
+  if (current.length >= 2) {
+    phrases.push(normalizeTopicMatchText(current.join(" ")));
+  }
+
+  return phrases;
+};
 
 const containsPhrase = (text: string, phrase: string): boolean =>
   phrase !== "" && ` ${normalizeTopicMatchText(text)} `.includes(` ${phrase} `);
 
-const matchedCount = (terms: readonly string[], text: string): number => {
+const matchedTerms = (terms: readonly string[], text: string): ReadonlySet<string> => {
   const textTokens = tokenSet(text);
-  return terms.filter((term) => textTokens.has(term)).length;
+  return new Set(terms.filter((term) => textTokens.has(term)));
 };
 
 const normalizedPreferences = (
@@ -97,7 +110,7 @@ export const filterArticlesByTopic = ({
   }
 
   const phrase = normalizeTopicMatchText(query);
-  const entities = entityTokens(query);
+  const entities = entityPhrases(query);
   const settings = normalizedPreferences(preferences);
   const summariesByArticleId = new Map<string, EvidenceFragment[]>();
 
@@ -114,13 +127,24 @@ export const filterArticlesByTopic = ({
   const candidates = articles.flatMap<ArticleTopicCandidate>((article) => {
     const summaries = summariesByArticleId.get(article.id) ?? [];
     const summaryText = summaries.map((summary) => summary.text).join(" ");
-    const titleMatches = matchedCount(terms, article.title);
-    const summaryMatches = matchedCount(terms, summaryText);
+    const titleTerms = matchedTerms(terms, article.title);
+    const summaryTerms = matchedTerms(terms, summaryText);
+    const summaryOnlyTerms = new Set(
+      [...summaryTerms].filter((term) => !titleTerms.has(term)),
+    );
+    const matchingTerms = new Set([...titleTerms, ...summaryTerms]);
+    const titleMatches = titleTerms.size;
+    const summaryMatches = summaryOnlyTerms.size;
     const titlePhrase = containsPhrase(article.title, phrase);
     const summaryPhrase = containsPhrase(summaryText, phrase);
-    const titleEntity = [...entities].some((entity) => tokenSet(article.title).has(entity));
-    const summaryEntity = [...entities].some((entity) => tokenSet(summaryText).has(entity));
-    const eligible = titlePhrase || summaryPhrase || titleEntity || summaryEntity || titleMatches + summaryMatches >= 2;
+    const titleEntity = entities.some((entity) => containsPhrase(article.title, entity));
+    const summaryEntity = entities.some((entity) => containsPhrase(summaryText, entity));
+    const eligible =
+      titlePhrase ||
+      summaryPhrase ||
+      titleEntity ||
+      summaryEntity ||
+      matchingTerms.size >= 2;
 
     if (!eligible) {
       return [];
