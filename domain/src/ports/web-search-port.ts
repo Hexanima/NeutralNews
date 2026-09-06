@@ -15,9 +15,14 @@ import type {
 } from "./common.js";
 
 export interface WebSearchResult {
-  source?: NewsSource | undefined;
+  source: NewsSource;
   article: Article;
   evidence: EvidenceFragment;
+}
+
+export interface WebSearchSourceScope {
+  source: NewsSource;
+  domains: readonly string[];
 }
 
 export interface WebSearchResponse {
@@ -27,10 +32,12 @@ export interface WebSearchResponse {
 
 export interface WebSearchPort {
   search: (input: {
+    sourceScopes: readonly WebSearchSourceScope[];
     query: string;
     language?: LanguageCode | undefined;
     region?: NewsSourceRegion | undefined;
     allowedDomains?: readonly string[] | undefined;
+    blockedDomains?: readonly string[] | undefined;
     options?: LimitedPortOperationOptions | undefined;
   }) => AsyncResult<WebSearchResponse, PortError>;
 }

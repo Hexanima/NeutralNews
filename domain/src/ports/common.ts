@@ -85,6 +85,15 @@ export class AiCredentialUnavailableError extends TaggedError<"AiCredentialUnava
   }
 }
 
+export class AiConfigurationUnavailableError extends TaggedError<"AiConfigurationUnavailable"> {
+  public readonly type = "AiConfigurationUnavailable";
+
+  constructor() {
+    super("AiConfigurationUnavailable");
+    this.message = "Active AI configuration is unavailable";
+  }
+}
+
 export class AiProviderUnsupportedError extends TaggedError<"AiProviderUnsupported"> {
   public readonly type = "AiProviderUnsupported";
 
@@ -125,6 +134,7 @@ export type PortError =
   | AiModelNotFoundError
   | AiModelUnavailableError
   | AiProviderNotFoundError
+  | AiConfigurationUnavailableError
   | AiCredentialUnavailableError
   | AiProviderUnsupportedError
   | AiProviderRejectedError

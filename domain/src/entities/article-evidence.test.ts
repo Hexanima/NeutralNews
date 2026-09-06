@@ -149,6 +149,35 @@ describe("Article and evidence contracts", () => {
     }
   });
 
+  it("preserves web search discovery in runtime evidence", () => {
+    const result = createRuntimeEvidenceFragment({
+      ...validEvidenceInput,
+      provenance: {
+        ...validEvidenceInput.provenance,
+        discoveryKind: "web_search",
+      },
+    });
+
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result.value.provenance).toMatchObject({
+        discoveryKind: "web_search",
+      });
+    }
+  });
+
+  it("rejects an unsupported evidence discovery kind", () => {
+    const result = createRuntimeEvidenceFragment({
+      ...validEvidenceInput,
+      provenance: {
+        ...validEvidenceInput.provenance,
+        discoveryKind: "manual",
+      },
+    });
+
+    expect(isErr(result)).toBe(true);
+  });
+
   it.each([
     ["rss_summary", "complete"],
     ["web_snippet", "complete"],
@@ -211,6 +240,30 @@ describe("Article and evidence contracts", () => {
     );
     expect(isOk(createArticle(articleSnapshot))).toBe(true);
     expect(isOk(createEvidenceFragment(evidenceSnapshot.value))).toBe(true);
+  });
+
+  it("serializes the evidence discovery kind", () => {
+    const evidence = createEvidenceFragment({
+      ...validEvidenceInput,
+      provenance: {
+        ...validEvidenceInput.provenance,
+        discoveryKind: "web_search",
+      },
+    });
+
+    expect(isOk(evidence)).toBe(true);
+    if (!isOk(evidence)) {
+      return;
+    }
+
+    const snapshot = toEvidenceFragmentSnapshot(evidence.value);
+
+    expect(isOk(snapshot)).toBe(true);
+    if (isOk(snapshot)) {
+      expect(snapshot.value.provenance).toMatchObject({
+        discoveryKind: "web_search",
+      });
+    }
   });
 
   it("does not serialize complete extracted article bodies as persistible evidence snapshots", () => {

@@ -14,6 +14,8 @@ export type EvidenceContentKind =
   | "web_snippet"
   | "primary_document";
 
+export type EvidenceDiscoveryKind = "web_search";
+
 export type EvidenceContentLevel = "complete" | "partial";
 
 export interface Article {
@@ -49,6 +51,7 @@ export interface EvidenceProvenance {
   sourceId: UUID;
   url: ArticleUrl;
   contentKind: EvidenceContentKind;
+  discoveryKind?: EvidenceDiscoveryKind | undefined;
 }
 
 export interface EvidenceProvenanceSnapshot {
@@ -56,6 +59,7 @@ export interface EvidenceProvenanceSnapshot {
   sourceId: string;
   url: string;
   contentKind: string;
+  discoveryKind?: string | undefined;
 }
 
 export interface EvidenceFragment {
@@ -114,6 +118,7 @@ export type ArticleEvidenceField =
   | "text"
   | "provenance"
   | "contentKind"
+  | "discoveryKind"
   | "contentLevel"
   | "quality"
   | "attribution"
@@ -151,6 +156,8 @@ const contentKinds = new Set<string>([
   "web_snippet",
   "primary_document",
 ]);
+
+const discoveryKinds = new Set<string>(["web_search"]);
 
 const contentLevels = new Set<string>(["complete", "partial"]);
 
@@ -257,6 +264,20 @@ const createContentKind = (
   }
 
   return ok(value as EvidenceContentKind);
+};
+
+const createDiscoveryKind = (
+  value: unknown,
+): Result<EvidenceDiscoveryKind | undefined, InvalidArticleEvidenceValueError> => {
+  if (value === undefined) {
+    return ok(undefined);
+  }
+
+  if (!isString(value) || !discoveryKinds.has(value)) {
+    return err(invalidValue("discoveryKind", value));
+  }
+
+  return ok(value as EvidenceDiscoveryKind);
 };
 
 const createContentLevel = (
@@ -376,6 +397,7 @@ const createEvidenceFragmentWithPolicy = (
   const sourceId = createUuid("sourceId", provenanceValue.sourceId);
   const url = createArticleUrl(provenanceValue.url);
   const contentKind = createContentKind(provenanceValue.contentKind);
+  const discoveryKind = createDiscoveryKind(provenanceValue.discoveryKind);
   const contentLevel = createContentLevel(qualityValue.contentLevel);
 
   if (
@@ -387,6 +409,7 @@ const createEvidenceFragmentWithPolicy = (
     !sourceId.ok ||
     !url.ok ||
     !contentKind.ok ||
+    !discoveryKind.ok ||
     !contentLevel.ok
   ) {
     return err(
@@ -400,6 +423,7 @@ const createEvidenceFragmentWithPolicy = (
           sourceId,
           url,
           contentKind,
+          discoveryKind,
           contentLevel,
         ]),
       ),
@@ -418,6 +442,9 @@ const createEvidenceFragmentWithPolicy = (
       sourceId: sourceId.value,
       url: url.value,
       contentKind: contentKind.value,
+      ...(discoveryKind.value === undefined
+        ? {}
+        : { discoveryKind: discoveryKind.value }),
     },
     quality: {
       contentLevel: contentLevel.value,
@@ -463,6 +490,9 @@ export const toEvidenceFragmentSnapshot = (
       sourceId: evidence.provenance.sourceId,
       url: evidence.provenance.url,
       contentKind: evidence.provenance.contentKind,
+      ...(evidence.provenance.discoveryKind === undefined
+        ? {}
+        : { discoveryKind: evidence.provenance.discoveryKind }),
     },
     quality: {
       contentLevel: evidence.quality.contentLevel,
