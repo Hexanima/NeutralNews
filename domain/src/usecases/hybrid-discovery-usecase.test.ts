@@ -109,6 +109,64 @@ describe("hybrid discovery use case", () => {
     expect(webSearch.calls.search).toEqual([]);
   });
 
+  it("preserves merge groups created during RSS aggregation", async () => {
+    const entries = [
+      createEntry("1", "izquierda"),
+      createEntry("2", "centro"),
+      createEntry("3", "derecha"),
+    ];
+    const original = {
+      ...createArticle("1", entries[0]!.source.id),
+      url: "https://shared.example/reforma-laboral" as ArticleUrl,
+    };
+    const duplicate = {
+      ...createArticle("2", entries[1]!.source.id),
+      url: original.url,
+      title: original.title,
+    };
+    const thirdArticle = createArticle("3", entries[2]!.source.id);
+    const articlesBySourceId = new Map([
+      [original.sourceId, original],
+      [duplicate.sourceId, duplicate],
+      [thirdArticle.sourceId, thirdArticle],
+    ]);
+    const rssFeedReader = createFakeRssFeedReaderPort();
+    rssFeedReader.readFeed = async (input) => {
+      const article = articlesBySourceId.get(input.source.id)!;
+
+      return ok({
+        sourceId: input.source.id,
+        feedUrl: input.feedUrl,
+        articles: [article],
+        evidence: [createEvidence(input.source.id, article)],
+      });
+    };
+
+    const result = await discoverHybridEvidenceUseCase.execute(
+      {
+        rssFeedReader,
+        articleExtractor: createFakeArticleExtractorPort(),
+        webSearch: createFakeWebSearchPort(),
+      },
+      { sources: entries, query: "reforma laboral" },
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        articleMergeGroups: [
+          {
+            canonicalArticleId: original.id,
+            references: expect.arrayContaining([
+              expect.objectContaining({ articleId: original.id }),
+              expect.objectContaining({ articleId: duplicate.id }),
+            ]),
+          },
+        ],
+      },
+    });
+  });
+
   it("uses configured web sources to complete insufficient RSS coverage", async () => {
     const entries = [
       createEntry("1", "izquierda"),

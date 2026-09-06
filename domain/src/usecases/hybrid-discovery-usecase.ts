@@ -12,6 +12,7 @@ import type { NewsSourceCatalogEntry } from "../catalog/news-source-catalog.js";
 import {
   type ArticleDeduplicationOptions,
   type ArticleMergeGroup,
+  type ArticleMergeReference,
   type ArticleTopicMatchingPreferences,
   deduplicateArticles,
 } from "../services/index.js";
@@ -255,6 +256,58 @@ const failureFromWebExtraction = (
 const isCancelled = (error: PortError): error is PortCancelledError =>
   error.type === "PortCancelled";
 
+const combineArticleMergeGroups = (input: {
+  readonly rssGroups: readonly ArticleMergeGroup[];
+  readonly deduplicatedGroups: readonly ArticleMergeGroup[];
+}): readonly ArticleMergeGroup[] => {
+  const canonicalIdByArticleId = new Map<UUID, UUID>();
+  const canonicalUrlByArticleId = new Map<UUID, ArticleUrl>();
+
+  for (const group of input.deduplicatedGroups) {
+    canonicalUrlByArticleId.set(group.canonicalArticleId, group.canonicalUrl);
+    for (const reference of group.references) {
+      canonicalIdByArticleId.set(reference.articleId, group.canonicalArticleId);
+    }
+  }
+
+  const groupsByCanonicalId = new Map<
+    UUID,
+    { canonicalUrl: ArticleUrl; referencesByArticleId: Map<UUID, ArticleMergeReference> }
+  >();
+
+  for (const group of [...input.rssGroups, ...input.deduplicatedGroups]) {
+    const canonicalArticleId =
+      canonicalIdByArticleId.get(group.canonicalArticleId) ?? group.canonicalArticleId;
+    const existing = groupsByCanonicalId.get(canonicalArticleId);
+    const referencesByArticleId = existing?.referencesByArticleId ?? new Map<
+      UUID,
+      ArticleMergeReference
+    >();
+
+    for (const reference of group.references) {
+      referencesByArticleId.set(reference.articleId, reference);
+    }
+
+    groupsByCanonicalId.set(canonicalArticleId, {
+      canonicalUrl:
+        canonicalUrlByArticleId.get(canonicalArticleId) ??
+        existing?.canonicalUrl ??
+        group.canonicalUrl,
+      referencesByArticleId,
+    });
+  }
+
+  return [...groupsByCanonicalId].flatMap(([canonicalArticleId, group]) =>
+    group.referencesByArticleId.size > 1
+      ? [{
+          canonicalArticleId,
+          canonicalUrl: group.canonicalUrl,
+          references: [...group.referencesByArticleId.values()],
+        }]
+      : [],
+  );
+};
+
 const evidenceForArticles = (
   evidence: readonly EvidenceFragment[],
   articles: readonly Article[],
@@ -384,13 +437,15 @@ export const discoverHybridEvidenceUseCase: UseCase<
       sourcesById,
     );
     const selectedIds = new Set(selected.map((article) => article.id));
+    const articleMergeGroups = combineArticleMergeGroups({
+      rssGroups: rss.value.articleMergeGroups,
+      deduplicatedGroups: deduplicated.articleMergeGroups,
+    });
 
     return ok({
       articles: selected,
       evidence: evidenceForArticles(deduplicated.evidence, selected),
-      articleMergeGroups: deduplicated.articleMergeGroups.filter((group) =>
-        selectedIds.has(group.canonicalArticleId),
-      ),
+      articleMergeGroups: articleMergeGroups.filter((group) => selectedIds.has(group.canonicalArticleId)),
       coverage: coverageFor(selected, sourcesById),
       failedSources: failures,
       consultedUrls,
