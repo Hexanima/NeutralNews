@@ -171,10 +171,12 @@ describe("domain ports", () => {
       options: { signal, timeoutMs: 1000, maxBytes: 8192 },
     });
     const searchResult = await search.search({
+      source,
       query: "presupuesto nacional",
       language: "es-ar" as LanguageCode,
       region: "argentina",
       allowedDomains: ["example.com"],
+      blockedDomains: ["blocked.example"],
       options: { signal, timeoutMs: 1000, maxItems: 3 },
     });
 
@@ -189,6 +191,8 @@ describe("domain ports", () => {
     expect(rss.calls.readFeed[0]?.options?.maxRedirects).toBe(2);
     expect(extractor.calls.extractArticle[0]?.options?.maxBytes).toBe(8192);
     expect(search.calls.search[0]?.allowedDomains).toEqual(["example.com"]);
+    expect(search.calls.search[0]?.blockedDomains).toEqual(["blocked.example"]);
+    expect(search.calls.search[0]?.source).toEqual(source);
   });
 
   it("allows external ports to receive redirect limits", () => {
