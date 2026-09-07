@@ -142,6 +142,15 @@ const matchesDomain = (hostname: string, domain: string): boolean => {
   );
 };
 
+const domainsFromSourceScopes = (
+  sourceScopes: Parameters<WebSearchPort["search"]>[0]["sourceScopes"],
+): readonly string[] => [...new Set(
+  sourceScopes
+    .flatMap((scope) => scope.domains)
+    .map(normalizeDomain)
+    .filter((domain) => domain !== ""),
+)];
+
 const respectsDomainLimits = (input: {
   readonly url: ArticleUrl;
   readonly allowedDomains?: readonly string[] | undefined;
@@ -205,11 +214,12 @@ export const createAiWebSearchAdapter = ({
       return err(new PortCancelledError(operationName));
     }
 
+    const allowedDomains = input.allowedDomains ?? domainsFromSourceScopes(input.sourceScopes);
     const search = await aiProvider.searchWeb({
       selection: configuration.value.activeSelection,
       requiredCapabilities: ["web_search"],
       query: input.query,
-      allowedDomains: input.allowedDomains,
+      allowedDomains,
       blockedDomains: input.blockedDomains,
       options: input.options,
     });
@@ -228,9 +238,10 @@ export const createAiWebSearchAdapter = ({
     }
 
     const results: WebSearchResult[] = [];
-    const maxResults = input.options?.maxItems === undefined
+    const maxResultsPerSource = input.options?.maxItems === undefined
       ? Infinity
       : Math.max(0, Math.floor(input.options.maxItems));
+    const resultCountBySource = new Map<UUID, number>();
     const failedExtractions: WebSearchExtractionFailure[] = [];
 
     for (const { citation, url } of citations) {
@@ -240,7 +251,7 @@ export const createAiWebSearchAdapter = ({
 
       if (!respectsDomainLimits({
         url,
-        allowedDomains: input.allowedDomains,
+        allowedDomains,
         blockedDomains: input.blockedDomains,
       })) {
         continue;
@@ -258,8 +269,8 @@ export const createAiWebSearchAdapter = ({
         continue;
       }
 
-      if (results.length >= maxResults) {
-        break;
+      if ((resultCountBySource.get(source.id) ?? 0) >= maxResultsPerSource) {
+        continue;
       }
 
       if (input.options?.signal?.aborted) {
@@ -296,6 +307,10 @@ export const createAiWebSearchAdapter = ({
       });
       if (result !== null) {
         results.push(result);
+        resultCountBySource.set(
+          source.id,
+          (resultCountBySource.get(source.id) ?? 0) + 1,
+        );
       }
     }
 
