@@ -8,3 +8,4 @@ export * from "./testing/index.js";
 export * from "./errors/index.js";
 export * from "./usecases/neutral-news-readiness-usecase.js";
 export * from "./usecases/rss-feed-aggregation-usecase.js";
+export * from "./usecases/hybrid-discovery-usecase.js";

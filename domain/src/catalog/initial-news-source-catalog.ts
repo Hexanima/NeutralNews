@@ -22,6 +22,7 @@ export const initialNewsSourceCatalogSnapshot = {
         mode: "rss",
         feedUrl:
           "https://www.pagina12.com.ar/arc/outboundfeeds/rss/secciones/el-pais/notas",
+        domains: ["pagina12.com.ar"],
       },
     },
     {
@@ -37,7 +38,7 @@ export const initialNewsSourceCatalogSnapshot = {
         approvalStatus: "approved",
         reviewedAt,
       },
-      discovery: { mode: "search_only" },
+      discovery: { mode: "search_only", domains: ["eldestaperadio.com"] },
     },
     {
       source: {
@@ -52,7 +53,7 @@ export const initialNewsSourceCatalogSnapshot = {
         approvalStatus: "approved",
         reviewedAt,
       },
-      discovery: { mode: "search_only" },
+      discovery: { mode: "search_only", domains: ["perfil.com"] },
     },
     {
       source: {
@@ -67,7 +68,7 @@ export const initialNewsSourceCatalogSnapshot = {
         approvalStatus: "approved",
         reviewedAt,
       },
-      discovery: { mode: "search_only" },
+      discovery: { mode: "search_only", domains: ["lanacion.com.ar"] },
     },
     {
       source: {
@@ -82,7 +83,7 @@ export const initialNewsSourceCatalogSnapshot = {
         approvalStatus: "approved",
         reviewedAt,
       },
-      discovery: { mode: "search_only" },
+      discovery: { mode: "search_only", domains: ["laderechadiario.com"] },
     },
     {
       source: {
@@ -97,7 +98,7 @@ export const initialNewsSourceCatalogSnapshot = {
         approvalStatus: "approved",
         reviewedAt,
       },
-      discovery: { mode: "search_only" },
+      discovery: { mode: "search_only", domains: ["reuters.com"] },
     },
     {
       source: {
@@ -112,7 +113,7 @@ export const initialNewsSourceCatalogSnapshot = {
         approvalStatus: "approved",
         reviewedAt,
       },
-      discovery: { mode: "search_only" },
+      discovery: { mode: "search_only", domains: ["apnews.com"] },
     },
     {
       source: {
@@ -127,7 +128,7 @@ export const initialNewsSourceCatalogSnapshot = {
         approvalStatus: "approved",
         reviewedAt,
       },
-      discovery: { mode: "search_only" },
+      discovery: { mode: "search_only", domains: ["afp.com"] },
     },
     {
       source: {
@@ -145,6 +146,7 @@ export const initialNewsSourceCatalogSnapshot = {
       discovery: {
         mode: "rss",
         feedUrl: "https://feeds.bbci.co.uk/mundo/rss.xml",
+        domains: ["bbc.com", "bbc.co.uk"],
       },
     },
   ],

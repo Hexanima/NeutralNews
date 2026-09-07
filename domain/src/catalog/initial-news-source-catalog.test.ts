@@ -88,7 +88,7 @@ describe("initial news source catalog", () => {
     });
   });
 
-  it("requires every RSS entry to declare an explicit HTTP feed URL", () => {
+  it("declares explicit search domains for every initial source", () => {
     expect(
       rssEntries(initialNewsSourceCatalogSnapshot.sources).length,
     ).toBeGreaterThan(0);
@@ -96,10 +96,39 @@ describe("initial news source catalog", () => {
     for (const entry of initialNewsSourceCatalogSnapshot.sources) {
       if (entry.discovery.mode === "rss") {
         expect(entry.discovery.feedUrl).toMatch(/^https?:\/\//);
-        continue;
       }
 
-      expect(entry.discovery).toEqual({ mode: "search_only" });
+      expect(entry.discovery.domains).toEqual(
+        expect.arrayContaining([expect.any(String)]),
+      );
+    }
+  });
+
+  it("normalizes configured search domains while keeping them optional for existing entries", () => {
+    const result = createNewsSourceCatalog({
+      schemaVersion: 1,
+      sources: [
+        {
+          ...initialNewsSourceCatalogSnapshot.sources[0]!,
+          discovery: {
+            mode: "search_only",
+            domains: ["Example.COM."],
+          },
+        },
+        {
+          ...initialNewsSourceCatalogSnapshot.sources[1]!,
+          discovery: { mode: "search_only" },
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+    if (isOk(result)) {
+      expect(result.value.sources[0]?.discovery).toEqual({
+        mode: "search_only",
+        domains: ["example.com"],
+      });
+      expect(result.value.sources[1]?.discovery).toEqual({ mode: "search_only" });
     }
   });
 

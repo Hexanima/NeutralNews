@@ -17,6 +17,7 @@ import {
   type NewsSource,
   type UUID,
   type WebSearchPort,
+  type WebSearchExtractionFailure,
   type WebSearchResult,
 } from "app-domain";
 
@@ -141,6 +142,15 @@ const matchesDomain = (hostname: string, domain: string): boolean => {
   );
 };
 
+const domainsFromSourceScopes = (
+  sourceScopes: Parameters<WebSearchPort["search"]>[0]["sourceScopes"],
+): readonly string[] => [...new Set(
+  sourceScopes
+    .flatMap((scope) => scope.domains)
+    .map(normalizeDomain)
+    .filter((domain) => domain !== ""),
+)];
+
 const respectsDomainLimits = (input: {
   readonly url: ArticleUrl;
   readonly allowedDomains?: readonly string[] | undefined;
@@ -204,11 +214,12 @@ export const createAiWebSearchAdapter = ({
       return err(new PortCancelledError(operationName));
     }
 
+    const allowedDomains = input.allowedDomains ?? domainsFromSourceScopes(input.sourceScopes);
     const search = await aiProvider.searchWeb({
       selection: configuration.value.activeSelection,
       requiredCapabilities: ["web_search"],
       query: input.query,
-      allowedDomains: input.allowedDomains,
+      allowedDomains,
       blockedDomains: input.blockedDomains,
       options: input.options,
     });
@@ -227,10 +238,11 @@ export const createAiWebSearchAdapter = ({
     }
 
     const results: WebSearchResult[] = [];
-    const maxExtractions = input.options?.maxItems === undefined
+    const maxResultsPerSource = input.options?.maxItems === undefined
       ? Infinity
       : Math.max(0, Math.floor(input.options.maxItems));
-    let extractionCount = 0;
+    const resultCountBySource = new Map<UUID, number>();
+    const failedExtractions: WebSearchExtractionFailure[] = [];
 
     for (const { citation, url } of citations) {
       if (url === null) {
@@ -239,7 +251,7 @@ export const createAiWebSearchAdapter = ({
 
       if (!respectsDomainLimits({
         url,
-        allowedDomains: input.allowedDomains,
+        allowedDomains,
         blockedDomains: input.blockedDomains,
       })) {
         continue;
@@ -257,15 +269,14 @@ export const createAiWebSearchAdapter = ({
         continue;
       }
 
-      if (extractionCount >= maxExtractions) {
-        break;
+      if ((resultCountBySource.get(source.id) ?? 0) >= maxResultsPerSource) {
+        continue;
       }
 
       if (input.options?.signal?.aborted) {
         return err(new PortCancelledError(operationName));
       }
 
-      extractionCount += 1;
       const extraction = await articleExtractor.extractArticle({
         article,
         fallbackEvidence: [],
@@ -276,6 +287,16 @@ export const createAiWebSearchAdapter = ({
           return extraction;
         }
 
+        failedExtractions.push({
+          sourceId: source.id,
+          kind: "error",
+          error: extraction.error,
+        });
+        continue;
+      }
+
+      if (extraction.value.extractionStatus === "partial") {
+        failedExtractions.push({ sourceId: source.id, kind: "partial" });
         continue;
       }
 
@@ -286,12 +307,19 @@ export const createAiWebSearchAdapter = ({
       });
       if (result !== null) {
         results.push(result);
+        resultCountBySource.set(
+          source.id,
+          (resultCountBySource.get(source.id) ?? 0) + 1,
+        );
       }
     }
 
     return ok({
       results,
       consultedUrls: citations.flatMap(({ url }) => url === null ? [] : [url]),
+      ...(failedExtractions.length === 0
+        ? {}
+        : { failedExtractions }),
     });
   },
 });

@@ -213,15 +213,91 @@ describe("AI web search adapter", () => {
     }
   });
 
-  it("limits local extraction while retaining every consulted URL", async () => {
+  it("passes configured source domains to the provider without explicit limits", async () => {
+    const aiProvider = createFakeAiGenerationPort();
+    const search = createAiWebSearchAdapter({
+      aiProvider,
+      articleExtractor: createTestArticleExtractor(),
+      configurationRepository: {
+        getEffectiveConfiguration: async () => ok(configuration),
+      },
+    });
+
+    await search.search({
+      sourceScopes: [
+        { source, domains: ["example.com"] },
+        { source: secondSource, domains: ["international.example"] },
+      ],
+      query: "presupuesto nacional",
+    });
+
+    expect(aiProvider.calls.searchWeb[0]).toMatchObject({
+      allowedDomains: ["example.com", "international.example"],
+    });
+  });
+
+  it("keeps citations from later sources while bounding each source", async () => {
     const aiProvider = createFakeAiGenerationPort({
       citations: [
         { url: "https://example.com/uno", title: "Uno" },
         { url: "https://example.com/dos", title: "Dos" },
         { url: "https://example.com/tres", title: "Tres" },
+        { url: "https://international.example/cuatro", title: "Cuatro" },
       ],
     });
     const articleExtractor = createTestArticleExtractor();
+    const search = createAiWebSearchAdapter({
+      aiProvider,
+      articleExtractor,
+      configurationRepository: {
+        getEffectiveConfiguration: async () => ok(configuration),
+      },
+    });
+
+    const result = await search.search({
+      sourceScopes: [
+        { source, domains: ["example.com"] },
+        { source: secondSource, domains: ["international.example"] },
+      ],
+      query: "presupuesto nacional",
+      options: { maxItems: 2 },
+    });
+
+    expect(isOk(result)).toBe(true);
+    expect(articleExtractor.calls.extractArticle).toHaveLength(3);
+    if (isOk(result)) {
+      expect(result.value.results).toHaveLength(3);
+      expect(result.value.results.map((item) => item.source.id)).toEqual([
+        source.id,
+        source.id,
+        secondSource.id,
+      ]);
+      expect(result.value.consultedUrls).toEqual([
+        "https://example.com/uno",
+        "https://example.com/dos",
+        "https://example.com/tres",
+        "https://international.example/cuatro",
+      ]);
+    }
+  });
+
+  it("continues extracting citations until it reaches the valid result limit", async () => {
+    const aiProvider = createFakeAiGenerationPort({
+      citations: [
+        { url: "https://example.com/uno", title: "Uno" },
+        { url: "https://example.com/dos", title: "Dos" },
+      ],
+    });
+    const successfulExtractor = createTestArticleExtractor();
+    const extractedUrls: string[] = [];
+    const articleExtractor = createFakeArticleExtractorPort();
+    articleExtractor.extractArticle = async (input) => {
+      extractedUrls.push(input.article.url);
+
+      return input.article.url === "https://example.com/uno"
+        ? err(new ExternalPortError("article.extract", "Timeout"))
+        : successfulExtractor.extractArticle(input);
+    };
     const search = createAiWebSearchAdapter({
       aiProvider,
       articleExtractor,
@@ -236,16 +312,25 @@ describe("AI web search adapter", () => {
       options: { maxItems: 1 },
     });
 
-    expect(isOk(result)).toBe(true);
-    expect(articleExtractor.calls.extractArticle).toHaveLength(1);
-    if (isOk(result)) {
-      expect(result.value.results).toHaveLength(1);
-      expect(result.value.consultedUrls).toEqual([
-        "https://example.com/uno",
-        "https://example.com/dos",
-        "https://example.com/tres",
-      ]);
-    }
+    expect(extractedUrls).toEqual([
+      "https://example.com/uno",
+      "https://example.com/dos",
+    ]);
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        results: [
+          { article: { url: "https://example.com/dos" } },
+        ],
+        failedExtractions: [
+          {
+            sourceId: source.id,
+            kind: "error",
+            error: expect.objectContaining({ type: "ExternalPortError" }),
+          },
+        ],
+      },
+    });
   });
 
   it("rejects unavailable AI configuration before calling the provider", async () => {
@@ -385,6 +470,9 @@ describe("AI web search adapter", () => {
       value: {
         results: [],
         consultedUrls: ["https://example.com/presupuesto"],
+        failedExtractions: [
+          { sourceId: source.id, kind: "partial" },
+        ],
       },
     });
   });
@@ -433,6 +521,9 @@ describe("AI web search adapter", () => {
       value: {
         results: [],
         consultedUrls: ["https://example.com/presupuesto"],
+        failedExtractions: [
+          { sourceId: source.id, kind: "partial" },
+        ],
       },
     });
   });
