@@ -403,6 +403,14 @@ const normalizeCandidates = (
     ]));
   }
 
+  const invalidCandidateIndex = value.findIndex((candidate) => !isRecord(candidate));
+
+  if (invalidCandidateIndex !== -1) {
+    return err(new InvalidNewsSourceConfigurationError([
+      invalidValue("candidate", value[invalidCandidateIndex]),
+    ]));
+  }
+
   const candidates = value.map((candidate) =>
     createNewsSourceCandidate(candidate as NewsSourceCandidateSnapshot),
   );
