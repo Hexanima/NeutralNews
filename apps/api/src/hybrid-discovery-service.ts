@@ -38,13 +38,17 @@ export type HybridDiscoveryServiceError =
 export interface HybridDiscoveryServiceInput {
   readonly config: ApiConfig;
   readonly query: string;
+  readonly now?: (() => string) | undefined;
   readonly signal?: AbortSignal | undefined;
   readonly language?: Parameters<WebSearchPort["search"]>[0]["language"] | undefined;
   readonly region?: NewsSourceRegion | undefined;
   readonly allowedDomains?: readonly string[] | undefined;
   readonly blockedDomains?: readonly string[] | undefined;
   readonly topicMatchingPreferences?: Partial<ArticleTopicMatchingPreferences> | undefined;
-  readonly repository?: Pick<JsonNewsSourceConfigurationRepository, "getEffectiveConfiguration"> | undefined;
+  readonly repository?: Pick<
+    JsonNewsSourceConfigurationRepository,
+    "getEffectiveConfiguration" | "recordDiscoveredCandidates"
+  > | undefined;
   readonly aiConfigurationRepository?: Pick<JsonAiProviderConfigurationRepository, "getEffectiveConfiguration"> | undefined;
   readonly credentialVault?: CredentialVault | undefined;
   readonly aiProvider?: AiGenerationPort | undefined;
@@ -56,6 +60,7 @@ export interface HybridDiscoveryServiceInput {
 export const discoverConfiguredHybridEvidence = async ({
   config,
   query,
+  now = () => new Date().toISOString(),
   signal,
   language,
   region,
@@ -92,7 +97,7 @@ export const discoverConfiguredHybridEvidence = async ({
     configurationRepository: aiConfigurationRepository,
   });
 
-  return discoverHybridEvidenceUseCase.execute(
+  const discovery = await discoverHybridEvidenceUseCase.execute(
     {
       rssFeedReader,
       articleExtractor,
@@ -115,4 +120,22 @@ export const discoverConfiguredHybridEvidence = async ({
       topicMatchingPreferences,
     },
   );
+
+  if (!discovery.ok || discovery.value.consultedUrls.length === 0) {
+    return discovery;
+  }
+
+  const domains = [...new Set(discovery.value.consultedUrls.flatMap((url) => {
+    try {
+      return [new URL(url).hostname.toLowerCase().replace(/[.]$/, "")];
+    } catch {
+      return [];
+    }
+  }))];
+  const registered = await repository.recordDiscoveredCandidates({
+    domains,
+    seenAt: now(),
+  });
+
+  return registered.ok ? discovery : registered;
 };

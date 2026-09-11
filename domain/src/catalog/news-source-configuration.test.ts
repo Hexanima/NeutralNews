@@ -137,7 +137,7 @@ describe("news source effective configuration", () => {
       throw snapshot.error;
     }
 
-    expect(snapshot.value.schemaVersion).toBe(3);
+    expect(snapshot.value.schemaVersion).toBe(4);
     expect(snapshot.value.configurationVersion).toBe(3);
     expect(snapshot.value.sourceOverrides).toEqual([
       { id: firstSource.source.id, entry: changedDefault },
@@ -158,11 +158,11 @@ describe("news source effective configuration", () => {
     if (!isOk(snapshot)) {
       throw snapshot.error;
     }
-
     expect(snapshot.value).toEqual({
-      schemaVersion: 3,
+      schemaVersion: 4,
       configurationVersion: 6,
       sourceOverrides: [{ id: manualSource.source.id, entry: manualSource }],
+      candidates: [],
       regionalPreferences: defaultRegionalPreferences,
     });
   });
@@ -304,11 +304,11 @@ describe("news source effective configuration", () => {
     });
 
     const snapshot = toNewsSourceConfigurationSnapshot(configuration);
-
     expect(snapshot).toEqual({
-      schemaVersion: 3,
+      schemaVersion: 4,
       configurationVersion: 8,
       sourceOverrides: [{ id: manualSource.source.id, entry: manualSource }],
+      candidates: [],
       regionalPreferences,
     });
   });

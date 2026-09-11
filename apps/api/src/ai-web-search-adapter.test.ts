@@ -213,7 +213,7 @@ describe("AI web search adapter", () => {
     }
   });
 
-  it("passes configured source domains to the provider without explicit limits", async () => {
+  it("does not restrict the provider to configured source domains without explicit limits", async () => {
     const aiProvider = createFakeAiGenerationPort();
     const search = createAiWebSearchAdapter({
       aiProvider,
@@ -232,7 +232,7 @@ describe("AI web search adapter", () => {
     });
 
     expect(aiProvider.calls.searchWeb[0]).toMatchObject({
-      allowedDomains: ["example.com", "international.example"],
+      allowedDomains: undefined,
     });
   });
 

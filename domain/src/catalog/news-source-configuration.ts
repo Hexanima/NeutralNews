@@ -1,3 +1,10 @@
+import {
+  createNewsSourceCandidate,
+  toNewsSourceCandidateSnapshot,
+  type InvalidNewsSourceCandidateError,
+  type NewsSourceCandidate,
+  type NewsSourceCandidateSnapshot,
+} from "../entities/news-source-candidate.js";
 import type { NewsSourceRegion } from "../entities/news-source.js";
 import { TaggedError } from "../types/error.js";
 import { err, ok, type Result } from "../types/result.js";
@@ -10,7 +17,7 @@ import {
 } from "./news-source-catalog.js";
 import { initialNewsSourceCatalogSnapshot } from "./initial-news-source-catalog.js";
 
-export const newsSourceConfigurationSchemaVersion = 3;
+export const newsSourceConfigurationSchemaVersion = 4;
 export const initialNewsSourceConfigurationVersion = 1;
 export const defaultTimeZone = "America/Argentina/Buenos_Aires";
 
@@ -59,6 +66,7 @@ export interface NewsSourceConfigurationSnapshot {
   readonly schemaVersion: typeof newsSourceConfigurationSchemaVersion;
   readonly configurationVersion: number;
   readonly sourceOverrides: readonly NewsSourceConfigurationOverrideSnapshot[];
+  readonly candidates: readonly NewsSourceCandidateSnapshot[];
   readonly regionalPreferences: RegionalPreferencesSnapshot;
 }
 
@@ -80,6 +88,7 @@ export interface EffectiveNewsSourceConfiguration {
   readonly cacheVersion: string;
   readonly sources: readonly NewsSourceCatalogEntry[];
   readonly sourceOverrides: readonly NewsSourceConfigurationOverrideSnapshot[];
+  readonly candidates: readonly NewsSourceCandidateSnapshot[];
   readonly regionalPreferences: RegionalPreferencesSnapshot;
 }
 
@@ -88,6 +97,8 @@ export type NewsSourceConfigurationField =
   | "configurationVersion"
   | "sourceOverrides"
   | "sourceOverride"
+  | "candidates"
+  | "candidate"
   | "sources"
   | "id"
   | "regionalPreferences"
@@ -114,6 +125,7 @@ export class InvalidNewsSourceConfigurationError extends TaggedError<"InvalidNew
     public readonly errors: readonly (
       | InvalidNewsSourceConfigurationValueError
       | InvalidNewsSourceCatalogError
+      | InvalidNewsSourceCandidateError
     )[],
   ) {
     super("InvalidNewsSourceConfiguration");
@@ -379,6 +391,50 @@ const normalizeOverrideSnapshot = (
   });
 };
 
+const normalizeCandidates = (
+  value: unknown,
+): Result<
+  readonly NewsSourceCandidateSnapshot[],
+  InvalidNewsSourceConfigurationError
+> => {
+  if (!Array.isArray(value)) {
+    return err(new InvalidNewsSourceConfigurationError([
+      invalidValue("candidates", value),
+    ]));
+  }
+
+  const candidates = value.map((candidate) =>
+    createNewsSourceCandidate(candidate as NewsSourceCandidateSnapshot),
+  );
+  const domains = new Set<string>();
+  const duplicateDomains = new Set<string>();
+
+  for (const candidate of candidates) {
+    if (!candidate.ok) {
+      continue;
+    }
+
+    if (domains.has(candidate.value.domain)) {
+      duplicateDomains.add(candidate.value.domain);
+      continue;
+    }
+
+    domains.add(candidate.value.domain);
+  }
+
+  const errors = [
+    ...candidates.flatMap((candidate) => candidate.ok ? [] : [candidate.error]),
+    ...[...duplicateDomains].map((domain) => invalidValue("candidate", domain)),
+  ];
+
+  if (errors.length > 0) {
+    return err(new InvalidNewsSourceConfigurationError(errors));
+  }
+
+  return ok(candidates.flatMap((candidate) =>
+    candidate.ok ? [toNewsSourceCandidateSnapshot(candidate.value)] : [],
+  ));
+};
 const normalizeCurrentSnapshot = (
   snapshot: Record<string, unknown>,
 ): Result<NewsSourceConfigurationSnapshot, InvalidNewsSourceConfigurationError> => {
@@ -387,10 +443,12 @@ const normalizeCurrentSnapshot = (
   const regionalPreferences = createRegionalPreferencesSnapshot(
     snapshot.regionalPreferences,
   );
+  const candidates = normalizeCandidates(snapshot.candidates);
   const errors = [
     ...(schemaVersion.ok ? [] : [schemaVersion.error]),
     ...(normalizedOverrides.ok ? [] : normalizedOverrides.error.errors),
     ...(regionalPreferences.ok ? [] : regionalPreferences.error.errors),
+    ...(candidates.ok ? [] : candidates.error.errors),
   ];
 
   if (errors.length > 0) {
@@ -401,6 +459,7 @@ const normalizeCurrentSnapshot = (
     schemaVersion: newsSourceConfigurationSchemaVersion,
     configurationVersion: resultValue(normalizedOverrides).configurationVersion,
     sourceOverrides: resultValue(normalizedOverrides).sourceOverrides,
+    candidates: resultValue(candidates),
     regionalPreferences: resultValue(regionalPreferences),
   });
 };
@@ -418,6 +477,7 @@ const migrateV2Snapshot = (
     schemaVersion: newsSourceConfigurationSchemaVersion,
     configurationVersion: resultValue(normalizedOverrides).configurationVersion,
     sourceOverrides: resultValue(normalizedOverrides).sourceOverrides,
+    candidates: [],
     regionalPreferences: defaultRegionalPreferences,
   });
 };
@@ -466,6 +526,7 @@ const migrateLegacySnapshot = (
     schemaVersion: newsSourceConfigurationSchemaVersion,
     configurationVersion: snapshot.configurationVersion,
     sourceOverrides,
+    candidates: [],
     regionalPreferences: defaultRegionalPreferences,
   });
 };
@@ -507,6 +568,10 @@ export const createNewsSourceConfigurationSnapshot = (
     return migrateV2Snapshot(snapshot);
   }
 
+  if (snapshot.schemaVersion === 3) {
+    return normalizeCurrentSnapshot({ ...snapshot, candidates: [] });
+  }
+
   if (snapshot.schemaVersion !== newsSourceConfigurationSchemaVersion) {
     return err(
       new InvalidNewsSourceConfigurationError([
@@ -523,6 +588,7 @@ export const createDefaultNewsSourceConfigurationSnapshot =
     schemaVersion: newsSourceConfigurationSchemaVersion,
     configurationVersion: initialNewsSourceConfigurationVersion,
     sourceOverrides: [],
+    candidates: [],
     regionalPreferences: defaultRegionalPreferences,
   });
 
@@ -614,6 +680,7 @@ export const createEffectiveNewsSourceConfiguration = (
     cacheVersion: effectiveCacheVersion(catalogSnapshot, configurationVersion),
     sources: effectiveCatalog.value.sources,
     sourceOverrides,
+    candidates: localSnapshot?.candidates ?? [],
     regionalPreferences: localSnapshot?.regionalPreferences ?? defaultRegionalPreferences,
   });
 };
@@ -624,6 +691,7 @@ export const toNewsSourceConfigurationSnapshot = (
   schemaVersion: newsSourceConfigurationSchemaVersion,
   configurationVersion: configuration.configurationVersion,
   sourceOverrides: configuration.sourceOverrides,
+  candidates: configuration.candidates,
   regionalPreferences: configuration.regionalPreferences,
 });
 

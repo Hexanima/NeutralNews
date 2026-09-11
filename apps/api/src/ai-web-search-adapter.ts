@@ -214,7 +214,7 @@ export const createAiWebSearchAdapter = ({
       return err(new PortCancelledError(operationName));
     }
 
-    const allowedDomains = input.allowedDomains ?? domainsFromSourceScopes(input.sourceScopes);
+    const allowedDomains = input.allowedDomains;
     const search = await aiProvider.searchWeb({
       selection: configuration.value.activeSelection,
       requiredCapabilities: ["web_search"],
