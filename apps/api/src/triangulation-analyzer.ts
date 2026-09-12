@@ -10,6 +10,7 @@ import {
   parseTriangulationStructuredOutput,
   triangulationOutputSchema,
   validateAiModelSelection,
+  type AiCitation,
   type AiGenerationPort,
   type EvidenceFragment,
   type LimitedPortOperationOptions,
@@ -51,11 +52,17 @@ const maximumInputBytes = (options: LimitedPortOperationOptions | undefined): nu
     ? defaultMaximumInputBytes
     : Math.max(0, Math.floor(options.maxBytes));
 
-const maximumOutputItems = (options: LimitedPortOperationOptions | undefined): number =>
-  Math.min(
-    absoluteMaximumOutputItems,
-    Math.max(1, Math.floor(options?.maxItems ?? defaultMaximumOutputItems)),
-  );
+const maximumOutputItems = (
+  options: LimitedPortOperationOptions | undefined,
+): number | null => {
+  const requested = options?.maxItems ?? defaultMaximumOutputItems;
+
+  if (!Number.isInteger(requested) || requested < 1) {
+    return null;
+  }
+
+  return Math.min(absoluteMaximumOutputItems, requested);
+};
 
 const outputSchemaWithLimits = (maximumItems: number) => ({
   ...triangulationOutputSchema,
@@ -82,10 +89,34 @@ const outputSchemaWithLimits = (maximumItems: number) => ({
     divergences: {
       ...triangulationOutputSchema.properties.divergences,
       maxItems: maximumItems,
+      items: {
+        ...triangulationOutputSchema.properties.divergences.items,
+        properties: {
+          ...triangulationOutputSchema.properties.divergences.items.properties,
+          positions: {
+            ...triangulationOutputSchema.properties.divergences.items.properties.positions,
+            maxItems: maximumItems,
+          },
+        },
+      },
     },
     sources: {
       ...triangulationOutputSchema.properties.sources,
       maxItems: maximumItems,
+    },
+    coverage: {
+      ...triangulationOutputSchema.properties.coverage,
+      properties: {
+        ...triangulationOutputSchema.properties.coverage.properties,
+        regions: {
+          ...triangulationOutputSchema.properties.coverage.properties.regions,
+          maxItems: maximumItems,
+        },
+        orientations: {
+          ...triangulationOutputSchema.properties.coverage.properties.orientations,
+          maxItems: maximumItems,
+        },
+      },
     },
     warnings: {
       ...triangulationOutputSchema.properties.warnings,
@@ -138,6 +169,32 @@ const outputReferencesBelongToEvidence = (
   );
 };
 
+const outputFitsMaximumItems = (
+  output: TriangulationStructuredOutput,
+  maximumItems: number,
+): boolean => {
+  const fits = (items: readonly unknown[]) => items.length <= maximumItems;
+
+  return fits(output.summary.corroboratedClaims) &&
+    fits(output.summary.attributedStatements) &&
+    fits(output.matches) &&
+    fits(output.divergences) &&
+    output.divergences.every((divergence) => fits(divergence.positions)) &&
+    fits(output.sources) &&
+    fits(output.coverage.regions) &&
+    fits(output.coverage.orientations) &&
+    fits(output.warnings);
+};
+
+const citationsBelongToEvidence = (
+  citations: readonly AiCitation[],
+  evidence: readonly EvidenceFragment[],
+): boolean => {
+  const evidenceUrls = new Set(evidence.map((fragment) => fragment.provenance.url));
+
+  return citations.every((citation) => evidenceUrls.has(citation.url));
+};
+
 const toTriangulationResult = (
   output: TriangulationStructuredOutput,
 ): Result<TriangulationResult, PortError> => {
@@ -171,9 +228,15 @@ export const createTriangulationAnalyzer = ({
       return err(new PortCancelledError(operationName));
     }
 
+    const maximumItems = maximumOutputItems(options);
+
+    if (maximumItems === null) {
+      return err(new PortLimitExceededError(operationName, "maxItems"));
+    }
+
     const prompt = promptFor({
       evidence,
-      maximumItems: maximumOutputItems(options),
+      maximumItems,
     });
 
     if (Buffer.byteLength(prompt, "utf8") > maximumInputBytes(options)) {
@@ -205,7 +268,7 @@ export const createTriangulationAnalyzer = ({
       selection: configuration.value.activeSelection,
       requiredCapabilities: ["structured_outputs", "reasoning_medium"],
       prompt,
-      outputSchema: outputSchemaWithLimits(maximumOutputItems(options)),
+      outputSchema: outputSchemaWithLimits(maximumItems),
       options,
     });
 
@@ -215,7 +278,12 @@ export const createTriangulationAnalyzer = ({
 
     const structuredOutput = parseTriangulationStructuredOutput(generated.value.output);
 
-    if (!structuredOutput.ok || !outputReferencesBelongToEvidence(structuredOutput.value, evidence)) {
+    if (
+      !structuredOutput.ok ||
+      !outputReferencesBelongToEvidence(structuredOutput.value, evidence) ||
+      !outputFitsMaximumItems(structuredOutput.value, maximumItems) ||
+      !citationsBelongToEvidence(generated.value.citations, evidence)
+    ) {
       return err(new AiInvalidStructuredOutputError("triangulation"));
     }
 

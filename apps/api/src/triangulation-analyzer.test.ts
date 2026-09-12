@@ -233,4 +233,114 @@ describe("triangulation analyzer", () => {
     });
     expect(aiProvider.calls.generateStructuredResponse).toHaveLength(0);
   });
+
+  it("rejects a zero output-item limit before contacting the provider", async () => {
+    const aiProvider = createFakeAiGenerationPort({ output: structuredOutput });
+    const analyzer = createTriangulationAnalyzer({
+      aiProvider,
+      configurationRepository: { getEffectiveConfiguration: async () => ok(configuration) },
+    });
+
+    const result = await analyzer.analyze({ evidence, options: { maxItems: 0 } });
+
+    expect(result).toEqual({
+      ok: false,
+      error: expect.objectContaining({ type: "PortLimitExceeded", limitName: "maxItems" }),
+    });
+    expect(aiProvider.calls.generateStructuredResponse).toHaveLength(0);
+  });
+
+  it("enforces the requested maximum for matches after the provider responds", async () => {
+    const analyzer = createTriangulationAnalyzer({
+      aiProvider: createFakeAiGenerationPort({
+        output: {
+          ...structuredOutput,
+          matches: [
+            ...structuredOutput.matches,
+            structuredOutput.matches[0]!,
+            structuredOutput.matches[0]!,
+          ],
+        },
+      }),
+      configurationRepository: { getEffectiveConfiguration: async () => ok(configuration) },
+    });
+
+    const result = await analyzer.analyze({ evidence, options: { maxItems: 2 } });
+
+    expect(result).toEqual({
+      ok: false,
+      error: expect.any(AiInvalidStructuredOutputError),
+    });
+  });
+
+  it("enforces the requested maximum for divergence positions after the provider responds", async () => {
+    const analyzer = createTriangulationAnalyzer({
+      aiProvider: createFakeAiGenerationPort({
+        output: {
+          ...structuredOutput,
+          matches: [],
+          divergences: [{
+            id: "66666666-6666-4666-8666-666666666666",
+            contrast: "Las fuentes describen prioridades distintas.",
+            positions: [
+              { sourceId, claim: "Primera posición.", evidenceFragmentIds: [evidenceId] },
+              { sourceId: secondSourceId, claim: "Segunda posición.", evidenceFragmentIds: [secondEvidenceId] },
+              { sourceId, claim: "Tercera posición.", evidenceFragmentIds: [evidenceId] },
+            ],
+          }],
+        },
+      }),
+      configurationRepository: { getEffectiveConfiguration: async () => ok(configuration) },
+    });
+
+    const result = await analyzer.analyze({ evidence, options: { maxItems: 2 } });
+
+    expect(result).toEqual({
+      ok: false,
+      error: expect.any(AiInvalidStructuredOutputError),
+    });
+  });
+
+  it("enforces the requested maximum for coverage lists after the provider responds", async () => {
+    const analyzer = createTriangulationAnalyzer({
+      aiProvider: createFakeAiGenerationPort({
+        output: {
+          ...structuredOutput,
+          coverage: {
+            regions: [
+              { region: "argentina", sourceIds: [sourceId] },
+              { region: "latin_america", sourceIds: [secondSourceId] },
+              { region: "international", sourceIds: [sourceId, secondSourceId] },
+            ],
+            orientations: structuredOutput.coverage.orientations,
+          },
+        },
+      }),
+      configurationRepository: { getEffectiveConfiguration: async () => ok(configuration) },
+    });
+
+    const result = await analyzer.analyze({ evidence, options: { maxItems: 2 } });
+
+    expect(result).toEqual({
+      ok: false,
+      error: expect.any(AiInvalidStructuredOutputError),
+    });
+  });
+
+  it("rejects provider citations whose URLs are absent from the input evidence", async () => {
+    const analyzer = createTriangulationAnalyzer({
+      aiProvider: createFakeAiGenerationPort({
+        output: structuredOutput,
+        citations: [{ url: "https://fuente-inexistente.example/noticia" as never }],
+      }),
+      configurationRepository: { getEffectiveConfiguration: async () => ok(configuration) },
+    });
+
+    const result = await analyzer.analyze({ evidence });
+
+    expect(result).toEqual({
+      ok: false,
+      error: expect.any(AiInvalidStructuredOutputError),
+    });
+  });
 });
