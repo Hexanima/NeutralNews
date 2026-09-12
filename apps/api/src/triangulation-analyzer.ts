@@ -10,6 +10,7 @@ import {
   parseTriangulationStructuredOutput,
   triangulationOutputSchema,
   validateAiModelSelection,
+  verifyTriangulationAttributions,
   type AiCitation,
   type AiGenerationPort,
   type EvidenceFragment,
@@ -154,21 +155,6 @@ const promptFor = (input: {
   JSON.stringify(preparedEvidence(input.evidence)),
 ].join("\n\n");
 
-const outputReferencesBelongToEvidence = (
-  output: TriangulationStructuredOutput,
-  evidence: readonly EvidenceFragment[],
-): boolean => {
-  const sourceIdByEvidenceId = new Map(
-    evidence.map((fragment) => [fragment.id, fragment.provenance.sourceId]),
-  );
-
-  return output.sources.every((source) =>
-    source.evidenceFragmentIds.every(
-      (evidenceId) => sourceIdByEvidenceId.get(evidenceId) === source.sourceId,
-    ),
-  );
-};
-
 const outputFitsMaximumItems = (
   output: TriangulationStructuredOutput,
   maximumItems: number,
@@ -280,17 +266,25 @@ export const createTriangulationAnalyzer = ({
 
     if (
       !structuredOutput.ok ||
-      !outputReferencesBelongToEvidence(structuredOutput.value, evidence) ||
       !outputFitsMaximumItems(structuredOutput.value, maximumItems) ||
       !citationsBelongToEvidence(generated.value.citations, evidence)
     ) {
       return err(new AiInvalidStructuredOutputError("triangulation"));
     }
 
-    const triangulation = toTriangulationResult(structuredOutput.value);
+    const verifiedOutput = verifyTriangulationAttributions({
+      output: structuredOutput.value,
+      evidence,
+    });
+
+    if (!verifiedOutput.ok) {
+      return err(new AiInvalidStructuredOutputError("triangulation"));
+    }
+
+    const triangulation = toTriangulationResult(verifiedOutput.value);
 
     return triangulation.ok
-      ? ok({ triangulation: triangulation.value, structuredOutput: structuredOutput.value })
+      ? ok({ triangulation: triangulation.value, structuredOutput: verifiedOutput.value })
       : triangulation;
   },
 });

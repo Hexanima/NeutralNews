@@ -191,6 +191,53 @@ describe("triangulation analyzer", () => {
     });
   });
 
+  it("degrades an unverifiable claim without exposing its invented source", async () => {
+    const unknownSourceId = "99999999-9999-4999-8999-999999999999";
+    const unknownEvidenceId = "88888888-8888-4888-8888-888888888888";
+    const analyzer = createTriangulationAnalyzer({
+      aiProvider: createFakeAiGenerationPort({
+        output: {
+          ...structuredOutput,
+          summary: {
+            overview: "La segunda fuente informa el ingreso legislativo.",
+            corroboratedClaims: [],
+            attributedStatements: [{
+              text: "La segunda fuente informó el ingreso legislativo.",
+              attribution: "Según la segunda fuente.",
+              sourceId: secondSourceId,
+              evidenceFragmentIds: [secondEvidenceId],
+            }],
+          },
+          matches: [{
+            ...structuredOutput.matches[0],
+            sourceIds: [sourceId, unknownSourceId],
+            evidenceFragmentIds: [evidenceId, unknownEvidenceId],
+          }],
+          sources: [
+            ...structuredOutput.sources,
+            { sourceId: unknownSourceId, evidenceFragmentIds: [unknownEvidenceId] },
+          ],
+          coverage: {
+            regions: [{ region: "argentina", sourceIds: [sourceId, secondSourceId] }],
+            orientations: [{ orientation: "sin_clasificar", sourceIds: [sourceId, secondSourceId] }],
+          },
+        },
+      }),
+      configurationRepository: { getEffectiveConfiguration: async () => ok(configuration) },
+    });
+
+    const result = await analyzer.analyze({ evidence });
+
+    expect(isOk(result)).toBe(true);
+    if (isOk(result)) {
+      expect(result.value.triangulation.matches).toEqual([]);
+      expect(result.value.triangulation.sources).toEqual(structuredOutput.sources);
+      expect(result.value.triangulation.warnings).toContainEqual(expect.objectContaining({
+        kind: "partial_coverage",
+      }));
+    }
+  });
+
   it("rejects a provider response outside the triangulation schema", async () => {
     const analyzer = createTriangulationAnalyzer({
       aiProvider: createFakeAiGenerationPort({ output: { summary: "incompleto" } }),
