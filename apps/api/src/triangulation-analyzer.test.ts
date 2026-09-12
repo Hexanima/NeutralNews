@@ -221,17 +221,38 @@ describe("triangulation analyzer", () => {
             regions: [{ region: "argentina", sourceIds: [sourceId, secondSourceId] }],
             orientations: [{ orientation: "sin_clasificar", sourceIds: [sourceId, secondSourceId] }],
           },
+          warnings: [
+            {
+              kind: "partial_coverage",
+              message: "La cobertura disponible es parcial.",
+              sourceIds: [],
+              evidenceFragmentIds: [],
+            },
+            {
+              kind: "partial_coverage",
+              message: "Las fuentes disponibles son limitadas.",
+              sourceIds: [],
+              evidenceFragmentIds: [],
+            },
+            {
+              kind: "asymmetric_coverage",
+              message: "La cobertura se concentra en pocos medios.",
+              sourceIds: [],
+              evidenceFragmentIds: [],
+            },
+          ],
         },
       }),
       configurationRepository: { getEffectiveConfiguration: async () => ok(configuration) },
     });
 
-    const result = await analyzer.analyze({ evidence });
+    const result = await analyzer.analyze({ evidence, options: { maxItems: 3 } });
 
     expect(isOk(result)).toBe(true);
     if (isOk(result)) {
       expect(result.value.triangulation.matches).toEqual([]);
       expect(result.value.triangulation.sources).toEqual(structuredOutput.sources);
+      expect(result.value.triangulation.warnings).toHaveLength(3);
       expect(result.value.triangulation.warnings).toContainEqual(expect.objectContaining({
         kind: "partial_coverage",
       }));

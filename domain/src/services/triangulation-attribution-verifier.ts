@@ -23,6 +23,7 @@ export class InvalidTriangulationAttributionError extends TaggedError<"InvalidTr
 export interface VerifyTriangulationAttributionsInput {
   readonly output: TriangulationStructuredOutput;
   readonly evidence: readonly EvidenceFragment[];
+  readonly maximumItems: number;
 }
 
 const attributionWarning = {
@@ -40,6 +41,7 @@ const sourceEvidenceIndex = (evidence: readonly EvidenceFragment[]) =>
 export const verifyTriangulationAttributions = ({
   output,
   evidence,
+  maximumItems,
 }: VerifyTriangulationAttributionsInput): Result<
   TriangulationStructuredOutput,
   InvalidTriangulationAttributionError
@@ -161,7 +163,9 @@ export const verifyTriangulationAttributions = ({
     divergences,
     sources,
     coverage,
-    warnings: degraded ? [...warnings, attributionWarning] : warnings,
+    warnings: degraded
+      ? [...warnings, attributionWarning].slice(0, maximumItems)
+      : warnings,
   });
 
   return verified.ok

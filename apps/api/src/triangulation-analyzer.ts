@@ -275,6 +275,7 @@ export const createTriangulationAnalyzer = ({
     const verifiedOutput = verifyTriangulationAttributions({
       output: structuredOutput.value,
       evidence,
+      maximumItems,
     });
 
     if (!verifiedOutput.ok) {

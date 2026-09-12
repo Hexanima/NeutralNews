@@ -108,6 +108,7 @@ describe("triangulation attribution verifier", () => {
     const result = verifyTriangulationAttributions({
       output: parsed(validOutput),
       evidence,
+      maximumItems: 6,
     });
 
     expect(isOk(result)).toBe(true);
@@ -139,7 +140,7 @@ describe("triangulation attribution verifier", () => {
       },
     });
 
-    const result = verifyTriangulationAttributions({ output, evidence });
+    const result = verifyTriangulationAttributions({ output, evidence, maximumItems: 6 });
 
     expect(isOk(result)).toBe(true);
     if (isOk(result)) {
@@ -191,7 +192,7 @@ describe("triangulation attribution verifier", () => {
       },
     });
 
-    const result = verifyTriangulationAttributions({ output, evidence });
+    const result = verifyTriangulationAttributions({ output, evidence, maximumItems: 6 });
 
     expect(isOk(result)).toBe(true);
     if (isOk(result)) {
@@ -233,7 +234,7 @@ describe("triangulation attribution verifier", () => {
       }],
     });
 
-    const result = verifyTriangulationAttributions({ output, evidence });
+    const result = verifyTriangulationAttributions({ output, evidence, maximumItems: 6 });
 
     expect(isErr(result)).toBe(true);
     if (isErr(result)) {
