@@ -149,4 +149,47 @@ describe("hybrid discovery service", () => {
       seenAt: "2026-09-06T12:00:00.000Z",
     }]);
   });
+  it("registers only consulted domains permitted by domain limits", async () => {
+    const entries = [createEntry("1", "izquierda")];
+    const registered: { domains: readonly string[]; seenAt: string }[] = [];
+    const configuration = {
+      schemaVersion: 4,
+      configurationVersion: 1,
+      cacheVersion: "test",
+      sources: entries,
+      sourceOverrides: [],
+      candidates: [],
+      regionalPreferences: defaultRegionalPreferences,
+    };
+
+    const result = await discoverConfiguredHybridEvidence({
+      config,
+      query: "reforma laboral",
+      allowedDomains: ["allowed.example", "blocked.example"],
+      blockedDomains: ["blocked.example"],
+      now: () => "2026-09-11T12:00:00.000Z",
+      repository: {
+        getEffectiveConfiguration: async () => ok(configuration),
+        recordDiscoveredCandidates: async (input) => {
+          registered.push(input);
+          return ok(configuration);
+        },
+      },
+      rssFeedReader: createFakeRssFeedReaderPort(),
+      articleExtractor: createFakeArticleExtractorPort(),
+      webSearch: createFakeWebSearchPort({
+        consultedUrls: [
+          "https://allowed.example/politica" as ArticleUrl,
+          "https://sub.blocked.example/politica" as ArticleUrl,
+          "https://outside.example/politica" as ArticleUrl,
+        ],
+      }),
+    });
+
+    expect(result).toMatchObject({ ok: true });
+    expect(registered).toEqual([{
+      domains: ["allowed.example"],
+      seenAt: "2026-09-11T12:00:00.000Z",
+    }]);
+  });
 });

@@ -57,6 +57,29 @@ export interface HybridDiscoveryServiceInput {
   readonly webSearch?: WebSearchPort | undefined;
 }
 
+const normalizeDomain = (domain: string): string => domain.trim().toLowerCase().replace(/[.]$/, "");
+
+const matchesDomain = (hostname: string, domain: string): boolean => {
+  const normalizedDomain = normalizeDomain(domain);
+
+  return normalizedDomain !== "" && (
+    hostname === normalizedDomain || hostname.endsWith(`.${normalizedDomain}`)
+  );
+};
+
+const respectsDomainLimits = (input: {
+  readonly hostname: string;
+  readonly allowedDomains?: readonly string[] | undefined;
+  readonly blockedDomains?: readonly string[] | undefined;
+}): boolean => {
+  const isAllowed = input.allowedDomains === undefined ||
+    input.allowedDomains.some((domain) => matchesDomain(input.hostname, domain));
+  const isBlocked = input.blockedDomains?.some((domain) => matchesDomain(input.hostname, domain)) ??
+    false;
+
+  return isAllowed && !isBlocked;
+};
+
 export const discoverConfiguredHybridEvidence = async ({
   config,
   query,
@@ -127,11 +150,18 @@ export const discoverConfiguredHybridEvidence = async ({
 
   const domains = [...new Set(discovery.value.consultedUrls.flatMap((url) => {
     try {
-      return [new URL(url).hostname.toLowerCase().replace(/[.]$/, "")];
+      const hostname = new URL(url).hostname.toLowerCase().replace(/[.]$/, "");
+
+      return respectsDomainLimits({ hostname, allowedDomains, blockedDomains }) ? [hostname] : [];
     } catch {
       return [];
     }
   }))];
+
+  if (domains.length === 0) {
+    return discovery;
+  }
+
   const registered = await repository.recordDiscoveredCandidates({
     domains,
     seenAt: now(),
