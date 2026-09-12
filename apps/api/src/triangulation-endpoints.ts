@@ -2,8 +2,12 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 import {
   AiConfigurationUnavailableError,
+  AiCapabilityUnavailableError,
   AiCredentialUnavailableError,
+  AiInvalidStructuredOutputError,
+  AiModelUnavailableError,
   AiProviderRejectedError,
+  AiProviderUnsupportedError,
   ExternalPortError,
   PortLimitExceededError,
   type Result,
@@ -86,7 +90,11 @@ const sendTriangulationError = (response: ServerResponse, error: unknown) => {
     error instanceof ExternalPortError ||
     error instanceof AiProviderRejectedError ||
     error instanceof AiCredentialUnavailableError ||
-    error instanceof AiConfigurationUnavailableError
+    error instanceof AiConfigurationUnavailableError ||
+    error instanceof AiProviderUnsupportedError ||
+    error instanceof AiModelUnavailableError ||
+    error instanceof AiCapabilityUnavailableError ||
+    error instanceof AiInvalidStructuredOutputError
   ) {
     sendJson(response, 502, { error: { code: "TriangulationProviderError" } });
     return;

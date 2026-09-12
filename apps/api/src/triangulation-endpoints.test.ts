@@ -7,6 +7,10 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  AiCapabilityUnavailableError,
+  AiInvalidStructuredOutputError,
+  AiModelUnavailableError,
+  AiProviderUnsupportedError,
   ExternalPortError,
   PortCancelledError,
   PortLimitExceededError,
@@ -201,6 +205,28 @@ describe("triangulation endpoint", () => {
         triangulationRequestOptions: {
           triangulate: async () =>
             err(new ExternalPortError("openai.responses.create", "PermanentFailure")),
+        },
+      },
+    );
+
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({
+      error: { code: "TriangulationProviderError" },
+    });
+  });
+
+  it.each([
+    new AiProviderUnsupportedError("unsupported"),
+    new AiModelUnavailableError("openai", "unavailable-model"),
+    new AiCapabilityUnavailableError("openai", "gpt-5.6-terra", "web_search"),
+    new AiInvalidStructuredOutputError("openai"),
+  ])("returns a provider error for %s", async (providerFailure) => {
+    const response = await fetchFromApp(
+      await createEnvironment(),
+      { query: "reforma laboral" },
+      {
+        triangulationRequestOptions: {
+          triangulate: async () => err(providerFailure),
         },
       },
     );
