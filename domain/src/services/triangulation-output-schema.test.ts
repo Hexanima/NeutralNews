@@ -101,6 +101,7 @@ describe("triangulation structured output", () => {
     ["references to sources and evidence absent from sources", { ...validOutput, sources: [] }],
     ["evidence attributed to a source absent from a coincidence", { ...validOutput, sources: [...validOutput.sources, { sourceId: thirdSourceId, evidenceFragmentIds: [thirdEvidenceId] }], matches: [{ ...validOutput.matches[0], evidenceFragmentIds: [evidenceId, secondEvidenceId, thirdEvidenceId] }] }],
     ["an empty result without an insufficient or partial coverage warning", { ...validOutput, matches: [], divergences: [], warnings: [] }],
+    ["empty regional and editorial coverage", { ...validOutput, coverage: { regions: [], orientations: [] } }],
     ["a coincidence with one source", { ...validOutput, matches: [{ ...validOutput.matches[0], sourceIds: [sourceId], evidenceFragmentIds: [evidenceId] }] }],
     ["a divergence without its medium", { ...validOutput, divergences: [{ ...validOutput.divergences[0], positions: [{ ...validOutput.divergences[0].positions[0], sourceId: undefined }] }] }],
     ["an attributed statement without attribution", { ...validOutput, summary: { ...validOutput.summary, attributedStatements: [{ ...validOutput.summary.attributedStatements[0], attribution: "" }] } }],
@@ -126,6 +127,8 @@ describe("triangulation structured output", () => {
     });
     expect(triangulationOutputSchema.properties.matches.items.properties.sourceIds).not.toHaveProperty("uniqueItems");
     expect(triangulationOutputSchema.properties.summary.properties.overview).not.toHaveProperty("minLength");
+    expect(triangulationOutputSchema.properties.coverage.properties.regions.minItems).toBe(1);
+    expect(triangulationOutputSchema.properties.coverage.properties.orientations.minItems).toBe(1);
   });
 
   it("rejects whitespace-only text with the parser and schema pattern", () => {

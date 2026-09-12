@@ -387,9 +387,15 @@ const parseCoverage = (
       : invalid(field);
   });
 
-  return regionsValue.ok && orientationsValue.ok
-    ? ok({ regions: regionsValue.value, orientations: orientationsValue.value })
-    : invalid("coverage");
+  if (!regionsValue.ok || !orientationsValue.ok) {
+    return invalid("coverage");
+  }
+
+  if (regionsValue.value.length === 0 || orientationsValue.value.length === 0) {
+    return invalid("coverage");
+  }
+
+  return ok({ regions: regionsValue.value, orientations: orientationsValue.value });
 };
 
 const parseWarning = (
@@ -608,6 +614,7 @@ export const triangulationOutputSchema = {
       properties: {
         regions: {
           type: "array",
+          minItems: 1,
           items: {
             type: "object",
             additionalProperties: false,
@@ -620,6 +627,7 @@ export const triangulationOutputSchema = {
         },
         orientations: {
           type: "array",
+          minItems: 1,
           items: {
             type: "object",
             additionalProperties: false,
