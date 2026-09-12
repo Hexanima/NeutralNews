@@ -5,7 +5,10 @@ import {
   AiCapabilityUnavailableError,
   AiCredentialUnavailableError,
   AiInvalidStructuredOutputError,
+  AiModelIncompatibleError,
+  AiModelNotFoundError,
   AiModelUnavailableError,
+  AiProviderNotFoundError,
   AiProviderRejectedError,
   AiProviderUnsupportedError,
   ExternalPortError,
@@ -92,6 +95,9 @@ const sendTriangulationError = (response: ServerResponse, error: unknown) => {
     error instanceof AiCredentialUnavailableError ||
     error instanceof AiConfigurationUnavailableError ||
     error instanceof AiProviderUnsupportedError ||
+    error instanceof AiProviderNotFoundError ||
+    error instanceof AiModelNotFoundError ||
+    error instanceof AiModelIncompatibleError ||
     error instanceof AiModelUnavailableError ||
     error instanceof AiCapabilityUnavailableError ||
     error instanceof AiInvalidStructuredOutputError

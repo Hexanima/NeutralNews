@@ -9,7 +9,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   AiCapabilityUnavailableError,
   AiInvalidStructuredOutputError,
+  AiModelIncompatibleError,
+  AiModelNotFoundError,
   AiModelUnavailableError,
+  AiProviderNotFoundError,
   AiProviderUnsupportedError,
   ExternalPortError,
   PortCancelledError,
@@ -221,6 +224,27 @@ describe("triangulation endpoint", () => {
     new AiCapabilityUnavailableError("openai", "gpt-5.6-terra", "web_search"),
     new AiInvalidStructuredOutputError("openai"),
   ])("returns a provider error for %s", async (providerFailure) => {
+    const response = await fetchFromApp(
+      await createEnvironment(),
+      { query: "reforma laboral" },
+      {
+        triangulationRequestOptions: {
+          triangulate: async () => err(providerFailure),
+        },
+      },
+    );
+
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({
+      error: { code: "TriangulationProviderError" },
+    });
+  });
+
+  it.each([
+    new AiProviderNotFoundError("missing-provider"),
+    new AiModelNotFoundError("openai", "missing-model"),
+    new AiModelIncompatibleError("openai", "incompatible-model"),
+  ])("returns a provider error for invalid model selection %s", async (providerFailure) => {
     const response = await fetchFromApp(
       await createEnvironment(),
       { query: "reforma laboral" },
