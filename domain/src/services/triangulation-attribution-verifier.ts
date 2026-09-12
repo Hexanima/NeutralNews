@@ -164,7 +164,7 @@ export const verifyTriangulationAttributions = ({
     sources,
     coverage,
     warnings: degraded
-      ? [...warnings, attributionWarning].slice(0, maximumItems)
+      ? [...warnings.slice(0, maximumItems - 1), attributionWarning]
       : warnings,
   });
 

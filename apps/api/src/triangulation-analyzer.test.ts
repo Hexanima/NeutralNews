@@ -255,6 +255,7 @@ describe("triangulation analyzer", () => {
       expect(result.value.triangulation.warnings).toHaveLength(3);
       expect(result.value.triangulation.warnings).toContainEqual(expect.objectContaining({
         kind: "partial_coverage",
+        message: "Se omitieron afirmaciones cuya atribución no pudo verificarse.",
       }));
     }
   });
