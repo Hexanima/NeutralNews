@@ -14,6 +14,22 @@ Variables:
 - `NEUTRALNEWS_ALLOWED_ORIGINS`: lista separada por comas de orígenes HTTP(S) exactos para mutaciones autenticadas; es obligatoria fuera de loopback.
 - Login admite cinco fallos por ventana móvil de 15 minutos y las mutaciones autenticadas exigen `Origin` permitido.
 
+## Triangulación
+
+`POST /api/triangulation` requiere sesión válida y un `Origin` permitido. Recibe
+`{ "query": "tema" }` y devuelve directamente un `TriangulationResult` con sus
+advertencias y referencias de evidencia. Una muestra sin cobertura suficiente es
+un resultado válido con la advertencia `insufficient_evidence`.
+
+Los errores no incluyen prompts, credenciales ni cuerpos de artículos:
+
+- `400` — `InvalidTriangulationQuery`
+- `502` — `TriangulationProviderError`
+- `504` — `TriangulationTimeout`
+
+Si el cliente cierra la conexión, la cancelación se propaga a las operaciones de
+descubrimiento y generación en curso.
+
 ## Comandos
 
 - `yarn workspace api dev`
