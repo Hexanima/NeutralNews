@@ -199,7 +199,7 @@ describe("triangulation analyzer", () => {
         output: {
           ...structuredOutput,
           summary: {
-            overview: "La segunda fuente informa el ingreso legislativo.",
+            overview: "Una fuente inexistente confirma el ingreso legislativo.",
             corroboratedClaims: [],
             attributedStatements: [{
               text: "La segunda fuente informó el ingreso legislativo.",
@@ -250,6 +250,9 @@ describe("triangulation analyzer", () => {
 
     expect(isOk(result)).toBe(true);
     if (isOk(result)) {
+      expect(result.value.triangulation.summary).toBe(
+        "La segunda fuente informó el ingreso legislativo.",
+      );
       expect(result.value.triangulation.matches).toEqual([]);
       expect(result.value.triangulation.sources).toEqual(structuredOutput.sources);
       expect(result.value.triangulation.warnings).toHaveLength(3);

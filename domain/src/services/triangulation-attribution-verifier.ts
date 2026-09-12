@@ -33,6 +33,9 @@ const attributionWarning = {
   evidenceFragmentIds: [],
 };
 
+const noAttributableSummary =
+  "No hay afirmaciones atribuibles verificables en la cobertura disponible.";
+
 const sourceEvidenceIndex = (evidence: readonly EvidenceFragment[]) =>
   new Map<UUID, UUID>(
     evidence.map((fragment) => [fragment.id, fragment.provenance.sourceId]),
@@ -153,9 +156,15 @@ export const verifyTriangulationAttributions = ({
 
     return { ...warning, sourceIds, evidenceFragmentIds };
   });
+  const verifiedOverview = [
+    ...corroboratedClaims.map((claim) => claim.text),
+    ...attributedStatements.map((statement) => statement.text),
+  ].join(" ");
   const verified = parseTriangulationStructuredOutput({
     summary: {
-      overview: output.summary.overview,
+      overview: degraded
+        ? verifiedOverview || noAttributableSummary
+        : output.summary.overview,
       corroboratedClaims,
       attributedStatements,
     },
