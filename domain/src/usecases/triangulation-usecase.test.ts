@@ -1,5 +1,6 @@
 import {
   ExternalPortError,
+  InvalidTriangulationAttributionError,
   PortLimitExceededError,
   createFakeArticleExtractorPort,
   createFakeRssFeedReaderPort,
@@ -384,5 +385,41 @@ describe("triangulation use case", () => {
     );
 
     expect(result).toEqual({ ok: false, error: failure });
+  });
+
+  it("rejects editorial references that are absent from discovered evidence", async () => {
+    const entry = createEntry("1", "izquierda");
+    const article = createArticle("1", entry.source.id);
+    const evidence = createEvidence("1", article);
+    const unverified = resultValue(createTriangulationResult({
+      summary: "Una fuente ajena describe la reforma.",
+      matches: [],
+      divergences: [],
+      sources: [{
+        sourceId: "99999999-9999-4999-8999-999999999999" as UUID,
+        evidenceFragmentIds: ["88888888-8888-4888-8888-888888888888" as UUID],
+      }],
+      warnings: [{
+        kind: "partial_coverage",
+        message: "La cobertura no permite una comparación completa.",
+      }],
+    }));
+
+    const result = await triangulateTopicUseCase.execute(
+      {
+        rssFeedReader: createFakeRssFeedReaderPort({ articles: [article], evidence: [evidence] }),
+        articleExtractor: fallbackExtractor(),
+        webSearch: createFakeWebSearchPort(),
+        editorialGeneration: {
+          generateTriangulation: async () => ok(unverified),
+        },
+      },
+      { sources: [entry], query: "reforma laboral", selection },
+    );
+
+    expect(result).toEqual({
+      ok: false,
+      error: expect.any(InvalidTriangulationAttributionError),
+    });
   });
 });

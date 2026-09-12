@@ -17,6 +17,10 @@ import { err } from "../types/result.js";
 import type { UseCase } from "../types/usecase.js";
 import type { UUID } from "../types/uuid.js";
 import {
+  InvalidTriangulationAttributionError,
+  verifyTriangulationResultAttributions,
+} from "../services/triangulation-attribution-verifier.js";
+import {
   discoverHybridEvidenceUseCase,
   type DiscoverHybridEvidencePayload,
 } from "./hybrid-discovery-usecase.js";
@@ -37,7 +41,10 @@ export interface TriangulateTopicPayload extends DiscoverHybridEvidencePayload {
   readonly selection: AiModelSelection;
 }
 
-export type TriangulateTopicError = PortError | InvalidEditorialResultError;
+export type TriangulateTopicError =
+  | PortError
+  | InvalidEditorialResultError
+  | InvalidTriangulationAttributionError;
 
 const classifiedOrientation = (
   source: NewsSource | undefined,
@@ -161,13 +168,22 @@ export const triangulateTopicUseCase: UseCase<
       return generated;
     }
 
-    return addDiscoveryWarnings({
+    const verified = verifyTriangulationResultAttributions({
       triangulation: generated.value,
+      evidence: discovery.value.evidence,
+    });
+
+    if (!verified.ok) {
+      return verified;
+    }
+
+    return addDiscoveryWarnings({
+      triangulation: verified.value,
       warnings: discoveryWarnings({
         coverage: discovery.value.coverage,
         failedSourceCount: discovery.value.failedSources.length,
         evidenceSourceIds: discovery.value.evidence.map((evidence) => evidence.provenance.sourceId),
-        referencedSourceIds: generated.value.sources.map((source) => source.sourceId),
+        referencedSourceIds: verified.value.sources.map((source) => source.sourceId),
         sources: payload.sources.map((entry) => entry.source),
       }),
     });

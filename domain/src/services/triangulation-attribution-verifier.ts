@@ -1,4 +1,5 @@
 import type { EvidenceFragment } from "../entities/article-evidence.js";
+import type { TriangulationResult } from "../entities/editorial-result.js";
 import { TaggedError } from "../types/error.js";
 import { err, ok, type Result } from "../types/result.js";
 import type { UUID } from "../types/uuid.js";
@@ -26,6 +27,11 @@ export interface VerifyTriangulationAttributionsInput {
   readonly maximumItems: number;
 }
 
+export interface VerifyTriangulationResultAttributionsInput {
+  readonly triangulation: TriangulationResult;
+  readonly evidence: readonly EvidenceFragment[];
+}
+
 const attributionWarning = {
   kind: "partial_coverage" as const,
   message: "Se omitieron afirmaciones cuya atribución no pudo verificarse.",
@@ -40,6 +46,72 @@ const sourceEvidenceIndex = (evidence: readonly EvidenceFragment[]) =>
   new Map<UUID, UUID>(
     evidence.map((fragment) => [fragment.id, fragment.provenance.sourceId]),
   );
+
+export const verifyTriangulationResultAttributions = ({
+  triangulation,
+  evidence,
+}: VerifyTriangulationResultAttributionsInput): Result<
+  TriangulationResult,
+  InvalidTriangulationAttributionError
+> => {
+  const sourceIdByEvidenceId = sourceEvidenceIndex(evidence);
+  const knownSourceIds = new Set(triangulation.sources.map((source) => source.sourceId));
+  const belongsToSource = (sourceId: UUID, evidenceFragmentId: UUID): boolean =>
+    sourceIdByEvidenceId.get(evidenceFragmentId) === sourceId;
+  const verifiesSingleSource = (
+    sourceId: UUID,
+    evidenceFragmentIds: readonly UUID[],
+  ): boolean =>
+    knownSourceIds.has(sourceId) &&
+    evidenceFragmentIds.every((evidenceFragmentId) =>
+      belongsToSource(sourceId, evidenceFragmentId),
+    );
+  const verifiesMultipleSources = (
+    sourceIds: readonly UUID[],
+    evidenceFragmentIds: readonly UUID[],
+  ): boolean =>
+    sourceIds.every((sourceId) => knownSourceIds.has(sourceId)) &&
+    sourceIds.every((sourceId) =>
+      evidenceFragmentIds.some((evidenceFragmentId) =>
+        belongsToSource(sourceId, evidenceFragmentId),
+      ),
+    ) &&
+    evidenceFragmentIds.every((evidenceFragmentId) => {
+      const sourceId = sourceIdByEvidenceId.get(evidenceFragmentId);
+
+      return sourceId !== undefined && sourceIds.includes(sourceId);
+    });
+  const verifiesWarning = (
+    warning: TriangulationResult["warnings"][number],
+  ): boolean => {
+    const sourceIds = warning.sourceIds ?? [];
+    const evidenceFragmentIds = warning.evidenceFragmentIds ?? [];
+
+    return sourceIds.every((sourceId) => knownSourceIds.has(sourceId)) &&
+      evidenceFragmentIds.every((evidenceFragmentId) => {
+        const sourceId = sourceIdByEvidenceId.get(evidenceFragmentId);
+
+        return sourceId !== undefined &&
+          (sourceIds.length === 0 || sourceIds.includes(sourceId));
+      });
+  };
+  const valid = triangulation.sources.every((source) =>
+    verifiesSingleSource(source.sourceId, source.evidenceFragmentIds),
+  ) &&
+    triangulation.matches.every((match) =>
+      verifiesMultipleSources(match.sourceIds, match.evidenceFragmentIds),
+    ) &&
+    triangulation.divergences.every((divergence) =>
+      divergence.positions.every((position) =>
+        verifiesMultipleSources(position.sourceIds, position.evidenceFragmentIds),
+      ),
+    ) &&
+    triangulation.warnings.every(verifiesWarning);
+
+  return valid
+    ? ok(triangulation)
+    : err(new InvalidTriangulationAttributionError("InvalidVerifiedOutput"));
+};
 
 export const verifyTriangulationAttributions = ({
   output,
