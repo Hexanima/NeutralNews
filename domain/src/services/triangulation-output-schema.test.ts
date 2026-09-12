@@ -96,6 +96,7 @@ describe("triangulation structured output", () => {
   });
 
   it.each([
+    ["references to sources and evidence absent from sources", { ...validOutput, sources: [] }],
     ["a coincidence with one source", { ...validOutput, matches: [{ ...validOutput.matches[0], sourceIds: [sourceId], evidenceFragmentIds: [evidenceId] }] }],
     ["a divergence without its medium", { ...validOutput, divergences: [{ ...validOutput.divergences[0], positions: [{ ...validOutput.divergences[0].positions[0], sourceId: undefined }] }] }],
     ["an attributed statement without attribution", { ...validOutput, summary: { ...validOutput.summary, attributedStatements: [{ ...validOutput.summary.attributedStatements[0], attribution: "" }] } }],
@@ -120,4 +121,31 @@ describe("triangulation structured output", () => {
       ],
     });
   });
+
+  it("rejects whitespace-only text with the parser and schema pattern", () => {
+    const output = {
+      ...validOutput,
+      summary: { ...validOutput.summary, overview: "   " },
+    };
+
+    expect(isErr(parseTriangulationStructuredOutput(output))).toBe(true);
+    expect(
+      (triangulationOutputSchema.properties.summary.properties.overview as {
+        pattern: string;
+      }).pattern,
+    ).toBe("\\S");
+  });
+
+  it("rejects padded UUIDs with the parser and schema pattern", () => {
+    const output = {
+      ...validOutput,
+      sources: [{ ...validOutput.sources[0], sourceId: ` ${sourceId} ` }, validOutput.sources[1]],
+    };
+
+    expect(isErr(parseTriangulationStructuredOutput(output))).toBe(true);
+    expect(new RegExp(String(
+      (triangulationOutputSchema.properties.sources.items.properties.sourceId as { pattern: string }).pattern,
+    )).test(` ${sourceId} `)).toBe(false);
+  });
+
 });

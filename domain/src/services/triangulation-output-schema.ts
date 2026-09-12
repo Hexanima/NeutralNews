@@ -128,16 +128,16 @@ const parseText = (
   value: unknown,
   field: string,
 ): Result<string, InvalidTriangulationStructuredOutputError> =>
-  typeof value === "string" && value.trim() !== ""
-    ? ok(value.trim())
+  typeof value === "string" && /\S/.test(value)
+    ? ok(value)
     : invalid(field);
 
 const parseUuid = (
   value: unknown,
   field: string,
 ): Result<UUID, InvalidTriangulationStructuredOutputError> =>
-  typeof value === "string" && uuidPattern.test(value.trim())
-    ? ok(value.trim() as UUID)
+  typeof value === "string" && uuidPattern.test(value)
+    ? ok(value as UUID)
     : invalid(field);
 
 const parseUuidArray = (
@@ -414,6 +414,53 @@ const parseWarning = (
     : invalid(field);
 };
 
+const hasReferenceIntegrity = (output: TriangulationStructuredOutput): boolean => {
+  const knownSourceIds = new Set<string>();
+  const evidenceSourceIds = new Map<string, string>();
+
+  for (const source of output.sources) {
+    if (knownSourceIds.has(source.sourceId)) {
+      return false;
+    }
+    knownSourceIds.add(source.sourceId);
+    for (const evidenceFragmentId of source.evidenceFragmentIds) {
+      if (evidenceSourceIds.has(evidenceFragmentId)) {
+        return false;
+      }
+      evidenceSourceIds.set(evidenceFragmentId, source.sourceId);
+    }
+  }
+
+  const sourcesExist = (sourceIds: readonly UUID[]) =>
+    sourceIds.every((sourceId) => knownSourceIds.has(sourceId));
+  const evidenceExists = (evidenceFragmentIds: readonly UUID[]) =>
+    evidenceFragmentIds.every((evidenceFragmentId) => evidenceSourceIds.has(evidenceFragmentId));
+  const validatesSingleSource = (sourceId: UUID, evidenceFragmentIds: readonly UUID[]) =>
+    sourcesExist([sourceId]) && evidenceExists(evidenceFragmentIds) &&
+    evidenceFragmentIds.every((evidenceFragmentId) => evidenceSourceIds.get(evidenceFragmentId) === sourceId);
+  const validatesMultipleSources = (sourceIds: readonly UUID[], evidenceFragmentIds: readonly UUID[]) =>
+    sourcesExist(sourceIds) && evidenceExists(evidenceFragmentIds) &&
+    sourceIds.every((sourceId) => evidenceFragmentIds.some(
+      (evidenceFragmentId) => evidenceSourceIds.get(evidenceFragmentId) === sourceId,
+    ));
+  const validatesWarning = (warning: TriangulationStructuredOutput["warnings"][number]) =>
+    sourcesExist(warning.sourceIds) && evidenceExists(warning.evidenceFragmentIds) &&
+    (warning.sourceIds.length === 0 || warning.evidenceFragmentIds.every(
+      (evidenceFragmentId) => warning.sourceIds.includes(evidenceSourceIds.get(evidenceFragmentId) as UUID),
+    ));
+
+  return (
+    output.summary.corroboratedClaims.every((claim) => validatesMultipleSources(claim.sourceIds, claim.evidenceFragmentIds)) &&
+    output.summary.attributedStatements.every((statement) => validatesSingleSource(statement.sourceId, statement.evidenceFragmentIds)) &&
+    output.matches.every((match) => validatesMultipleSources(match.sourceIds, match.evidenceFragmentIds)) &&
+    output.divergences.every((divergence) => divergence.positions.every(
+      (position) => validatesSingleSource(position.sourceId, position.evidenceFragmentIds),
+    )) &&
+    output.coverage.regions.every((coverage) => sourcesExist(coverage.sourceIds)) &&
+    output.coverage.orientations.every((coverage) => sourcesExist(coverage.sourceIds)) &&
+    output.warnings.every(validatesWarning)
+  );
+};
 export const parseTriangulationStructuredOutput = (
   value: unknown,
 ): Result<TriangulationStructuredOutput, InvalidTriangulationStructuredOutputError> => {
@@ -432,18 +479,24 @@ export const parseTriangulationStructuredOutput = (
     return invalid("root");
   }
 
-  return ok({
+  const output = {
     summary: summary.value,
     matches: matches.value,
     divergences: divergences.value,
     sources: sources.value,
     coverage: coverage.value,
     warnings: warnings.value,
-  });
+  };
+
+  return hasReferenceIntegrity(output) ? ok(output) : invalid("references");
 };
 
 const uuidSchema = { type: "string", pattern: uuidPattern.source } as const;
-const nonEmptyTextSchema = { type: "string", minLength: 1 } as const;
+const nonEmptyTextSchema = {
+  type: "string",
+  minLength: 1,
+  pattern: "\\S",
+} as const;
 const uuidArraySchema = (minimum: number) => ({
   type: "array",
   items: uuidSchema,
