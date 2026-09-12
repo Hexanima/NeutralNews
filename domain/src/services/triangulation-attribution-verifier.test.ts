@@ -1,5 +1,6 @@
 import {
   createRuntimeEvidenceFragment,
+  createTriangulationResult,
   isErr,
   isOk,
   parseTriangulationStructuredOutput,
@@ -12,6 +13,7 @@ import { describe, expect, it } from "vitest";
 import {
   InvalidTriangulationAttributionError,
   verifyTriangulationAttributions,
+  verifyTriangulationResultAttributions,
 } from "./triangulation-attribution-verifier.js";
 
 const firstSourceId = "11111111-1111-4111-8111-111111111111" as UUID;
@@ -98,6 +100,14 @@ const parsed = (output: TriangulationStructuredOutput): TriangulationStructuredO
 
   if (!result.ok) {
     throw result.error;
+  }
+
+  return result.value;
+};
+
+const resultValue = <TValue>(result: { readonly ok: true; readonly value: TValue } | { readonly ok: false }): TValue => {
+  if (!result.ok) {
+    throw new Error("Expected a valid triangulation fixture");
   }
 
   return result.value;
@@ -240,5 +250,38 @@ describe("triangulation attribution verifier", () => {
     if (isErr(result)) {
       expect(result.error).toBeInstanceOf(InvalidTriangulationAttributionError);
     }
+  });
+
+  it("rejects a divergence position that omits evidence for one of its cited sources", () => {
+    const triangulation = resultValue(createTriangulationResult({
+      summary: "Las fuentes describen prioridades distintas.",
+      matches: [],
+      divergences: [{
+        id: "77777777-7777-4777-8777-777777777777" as UUID,
+        text: "Las coberturas enfatizan aspectos diferentes.",
+        positions: [
+          {
+            text: "Dos medios describen el ingreso legislativo.",
+            sourceIds: [firstSourceId, secondSourceId],
+            evidenceFragmentIds: [firstEvidenceId],
+          },
+          {
+            text: "El tercer medio enfatiza la continuidad del debate.",
+            sourceIds: [thirdSourceId],
+            evidenceFragmentIds: [thirdEvidenceId],
+          },
+        ],
+      }],
+      sources: [
+        { sourceId: firstSourceId, evidenceFragmentIds: [firstEvidenceId] },
+        { sourceId: secondSourceId, evidenceFragmentIds: [secondEvidenceId] },
+        { sourceId: thirdSourceId, evidenceFragmentIds: [thirdEvidenceId] },
+      ],
+      warnings: [],
+    }));
+
+    const result = verifyTriangulationResultAttributions({ triangulation, evidence });
+
+    expect(isErr(result)).toBe(true);
   });
 });
