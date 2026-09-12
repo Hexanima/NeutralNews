@@ -81,9 +81,10 @@ describe("JSON news source configuration repository", () => {
       initialNewsSourceCatalogSnapshot.sources.map((entry) => entry.source.id),
     );
     expect(await readStoredConfiguration(directory)).toEqual({
-      schemaVersion: 3,
+      schemaVersion: 4,
       configurationVersion: 1,
       sourceOverrides: [],
+      candidates: [],
       regionalPreferences: defaultRegionalPreferences,
     });
   });
@@ -111,7 +112,7 @@ describe("JSON news source configuration repository", () => {
       feedDistribution: { argentina: 2, latin_america: 2, international: 2 },
     });
     expect(await readStoredConfiguration(directory)).toMatchObject({
-      schemaVersion: 3,
+      schemaVersion: 4,
       configurationVersion: 2,
       regionalPreferences: {
         timeZone: { mode: "manual", manualTimeZone: "Europe/Madrid" },
@@ -184,9 +185,10 @@ describe("JSON news source configuration repository", () => {
       initialNewsSourceCatalogSnapshot.sources.map((entry) => entry.source.id),
     );
     expect(await readStoredConfiguration(directory)).toEqual({
-      schemaVersion: 3,
+      schemaVersion: 4,
       configurationVersion: 3,
       sourceOverrides: [],
+      candidates: [],
       regionalPreferences: defaultRegionalPreferences,
     });
   });
@@ -221,7 +223,7 @@ describe("JSON news source configuration repository", () => {
 
     expect(result.value.configurationVersion).toBe(5);
     expect(await readStoredConfiguration(directory)).toMatchObject({
-      schemaVersion: 3,
+      schemaVersion: 4,
       configurationVersion: 5,
       regionalPreferences: defaultRegionalPreferences,
     });
@@ -259,9 +261,10 @@ describe("JSON news source configuration repository", () => {
       initialNewsSourceCatalogSnapshot.sources.map((entry) => entry.source.id),
     );
     expect(await readStoredConfiguration(directory)).toEqual({
-      schemaVersion: 3,
+      schemaVersion: 4,
       configurationVersion: 1,
       sourceOverrides: [],
+      candidates: [],
       regionalPreferences: defaultRegionalPreferences,
     });
   });
@@ -281,9 +284,10 @@ describe("JSON news source configuration repository", () => {
 
     expect(result.value.configurationVersion).toBe(1);
     expect(await readStoredConfiguration(directory)).toEqual({
-      schemaVersion: 3,
+      schemaVersion: 4,
       configurationVersion: 1,
       sourceOverrides: [],
+      candidates: [],
       regionalPreferences: defaultRegionalPreferences,
     });
     expect(

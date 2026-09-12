@@ -1,5 +1,7 @@
 import {
   createDefaultNewsSourceConfigurationSnapshot,
+  createNewsSourceCandidate,
+  toNewsSourceCandidateSnapshot,
   createEffectiveNewsSourceConfiguration,
   createNewsSourceConfigurationSnapshot,
   createRegionalPreferencesSnapshot,
@@ -9,10 +11,12 @@ import {
   ok,
   TaggedError,
   type EffectiveNewsSourceConfiguration,
+  type InvalidNewsSourceCandidateError,
   type InvalidNewsSourceCatalogError,
   type InvalidNewsSourceConfigurationError,
   type NewsSourceCatalogEntrySnapshot,
   type NewsSourceCatalogSnapshot,
+  type NewsSourceCandidateSnapshot,
   type NewsSourceConfigurationOverrideSnapshot,
   type NewsSourceConfigurationSnapshot,
   type RegionalPreferencesInput,
@@ -41,7 +45,8 @@ export class NewsSourceConfigurationStorageError extends TaggedError<"NewsSource
 export type JsonNewsSourceConfigurationRepositoryError =
   | NewsSourceConfigurationStorageError
   | InvalidNewsSourceConfigurationError
-  | InvalidNewsSourceCatalogError;
+  | InvalidNewsSourceCatalogError
+  | InvalidNewsSourceCandidateError;
 
 export interface JsonNewsSourceConfigurationRepository {
   getEffectiveConfiguration: () => Promise<
@@ -52,6 +57,15 @@ export interface JsonNewsSourceConfigurationRepository {
   >;
   saveEntry: (input: {
     entry: NewsSourceCatalogEntrySnapshot;
+  }) => Promise<
+    Result<
+      EffectiveNewsSourceConfiguration,
+      JsonNewsSourceConfigurationRepositoryError
+    >
+  >;
+  recordDiscoveredCandidates: (input: {
+    domains: readonly string[];
+    seenAt: string;
   }) => Promise<
     Result<
       EffectiveNewsSourceConfiguration,
@@ -118,13 +132,15 @@ const createSnapshotFromCurrent = (
   current: NewsSourceConfigurationSnapshot,
   input: {
     sourceOverrides?: readonly NewsSourceConfigurationOverrideSnapshot[] | undefined;
+    candidates?: readonly NewsSourceCandidateSnapshot[] | undefined;
     regionalPreferences?: RegionalPreferencesInput | undefined;
   },
 ) =>
   createNewsSourceConfigurationSnapshot({
-    schemaVersion: 3,
+    schemaVersion: 4,
     configurationVersion: incrementVersion(current),
     sourceOverrides: input.sourceOverrides ?? current.sourceOverrides,
+    candidates: input.candidates ?? current.candidates,
     regionalPreferences: input.regionalPreferences ?? current.regionalPreferences,
   });
 
@@ -270,6 +286,73 @@ export const createJsonNewsSourceConfigurationRepository = (
       return saveMutatedSnapshot(nextSnapshot.value);
     },
 
+
+    recordDiscoveredCandidates: async ({ domains, seenAt }) => {
+      const current = await readSnapshot();
+
+      if (!current.ok) {
+        return current;
+      }
+
+      const effective = effectiveFromSnapshot(current.value);
+
+      if (!effective.ok) {
+        return effective;
+      }
+
+      const knownDomains = effective.value.sources.flatMap((entry) =>
+        entry.discovery.domains ?? [],
+      );
+      const candidatesByDomain = new Map(
+        current.value.candidates.map((candidate) => [candidate.domain, candidate]),
+      );
+
+      for (const domain of domains) {
+        const existing = candidatesByDomain.get(domain.trim().toLowerCase().replace(/[.]$/, ""));
+        const candidate = createNewsSourceCandidate({
+          domain,
+          orientation: "sin_clasificar",
+          active: false,
+          approvalStatus: "pending_review",
+          firstSeenAt: existing === undefined
+            ? seenAt
+            : existing.firstSeenAt < seenAt ? existing.firstSeenAt : seenAt,
+          lastSeenAt: existing === undefined
+            ? seenAt
+            : existing.lastSeenAt > seenAt ? existing.lastSeenAt : seenAt,
+        });
+
+        if (!candidate.ok) {
+          return candidate;
+        }
+
+        if (knownDomains.some((knownDomain) =>
+          candidate.value.domain === knownDomain ||
+          candidate.value.domain.endsWith(`.${knownDomain}`),
+        )) {
+          continue;
+        }
+
+        candidatesByDomain.set(
+          candidate.value.domain,
+          toNewsSourceCandidateSnapshot(candidate.value),
+        );
+      }
+
+      const candidates = [...candidatesByDomain.values()];
+
+      if (JSON.stringify(candidates) === JSON.stringify(current.value.candidates)) {
+        return effective;
+      }
+
+      const nextSnapshot = createSnapshotFromCurrent(current.value, { candidates });
+
+      if (!nextSnapshot.ok) {
+        return nextSnapshot;
+      }
+
+      return saveMutatedSnapshot(nextSnapshot.value);
+    },
     saveRegionalPreferences: async ({ regionalPreferences }) => {
       const current = await readSnapshot();
 
