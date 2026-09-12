@@ -12,6 +12,8 @@ const sourceId = "11111111-1111-4111-8111-111111111111";
 const secondSourceId = "22222222-2222-4222-8222-222222222222";
 const evidenceId = "33333333-3333-4333-8333-333333333333";
 const secondEvidenceId = "44444444-4444-4444-8444-444444444444";
+const thirdSourceId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const thirdEvidenceId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
 const validOutput = {
   summary: {
@@ -97,6 +99,8 @@ describe("triangulation structured output", () => {
 
   it.each([
     ["references to sources and evidence absent from sources", { ...validOutput, sources: [] }],
+    ["evidence attributed to a source absent from a coincidence", { ...validOutput, sources: [...validOutput.sources, { sourceId: thirdSourceId, evidenceFragmentIds: [thirdEvidenceId] }], matches: [{ ...validOutput.matches[0], evidenceFragmentIds: [evidenceId, secondEvidenceId, thirdEvidenceId] }] }],
+    ["an empty result without an insufficient or partial coverage warning", { ...validOutput, matches: [], divergences: [], warnings: [] }],
     ["a coincidence with one source", { ...validOutput, matches: [{ ...validOutput.matches[0], sourceIds: [sourceId], evidenceFragmentIds: [evidenceId] }] }],
     ["a divergence without its medium", { ...validOutput, divergences: [{ ...validOutput.divergences[0], positions: [{ ...validOutput.divergences[0].positions[0], sourceId: undefined }] }] }],
     ["an attributed statement without attribution", { ...validOutput, summary: { ...validOutput.summary, attributedStatements: [{ ...validOutput.summary.attributedStatements[0], attribution: "" }] } }],
@@ -120,6 +124,8 @@ describe("triangulation structured output", () => {
         "warnings",
       ],
     });
+    expect(triangulationOutputSchema.properties.matches.items.properties.sourceIds).not.toHaveProperty("uniqueItems");
+    expect(triangulationOutputSchema.properties.summary.properties.overview).not.toHaveProperty("minLength");
   });
 
   it("rejects whitespace-only text with the parser and schema pattern", () => {

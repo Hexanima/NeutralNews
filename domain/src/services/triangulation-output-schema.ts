@@ -442,7 +442,10 @@ const hasReferenceIntegrity = (output: TriangulationStructuredOutput): boolean =
     sourcesExist(sourceIds) && evidenceExists(evidenceFragmentIds) &&
     sourceIds.every((sourceId) => evidenceFragmentIds.some(
       (evidenceFragmentId) => evidenceSourceIds.get(evidenceFragmentId) === sourceId,
-    ));
+    )) &&
+    evidenceFragmentIds.every((evidenceFragmentId) =>
+      sourceIds.includes(evidenceSourceIds.get(evidenceFragmentId) as UUID),
+    );
   const validatesWarning = (warning: TriangulationStructuredOutput["warnings"][number]) =>
     sourcesExist(warning.sourceIds) && evidenceExists(warning.evidenceFragmentIds) &&
     (warning.sourceIds.length === 0 || warning.evidenceFragmentIds.every(
@@ -458,7 +461,11 @@ const hasReferenceIntegrity = (output: TriangulationStructuredOutput): boolean =
     )) &&
     output.coverage.regions.every((coverage) => sourcesExist(coverage.sourceIds)) &&
     output.coverage.orientations.every((coverage) => sourcesExist(coverage.sourceIds)) &&
-    output.warnings.every(validatesWarning)
+    output.warnings.every(validatesWarning) &&
+    (output.matches.length > 0 || output.divergences.length > 0 ||
+      output.warnings.some(
+        (warning) => warning.kind === "insufficient_evidence" || warning.kind === "partial_coverage",
+      ))
   );
 };
 export const parseTriangulationStructuredOutput = (
@@ -494,14 +501,12 @@ export const parseTriangulationStructuredOutput = (
 const uuidSchema = { type: "string", pattern: uuidPattern.source } as const;
 const nonEmptyTextSchema = {
   type: "string",
-  minLength: 1,
   pattern: "\\S",
 } as const;
 const uuidArraySchema = (minimum: number) => ({
   type: "array",
   items: uuidSchema,
   minItems: minimum,
-  uniqueItems: true,
 } as const);
 
 export const triangulationOutputSchema = {
