@@ -255,6 +255,21 @@ describe("rewrite analyzer", () => {
     });
   });
 
+  it("rejects an attribution after a noun that shares a reporting-verb root", async () => {
+    const text = "Los negociadores afirmaron que no aceptarán el acuerdo.";
+    const neutralText = "No aceptarán el acuerdo.";
+    const { analyzer } = analyzerFor({
+      neutralText,
+      changes: [],
+      positions: [{ sourceSegmentIds: ["segment-1"], neutralText }],
+    });
+
+    await expect(analyzer.rewrite({ text })).resolves.toEqual({
+      ok: false,
+      error: expect.any(AiInvalidStructuredOutputError),
+    });
+  });
+
   it("rejects a según attribution when its subject is removed", async () => {
     const text = "Según la oposición, la reforma recorta derechos laborales.";
     const neutralText = "La reforma recorta derechos laborales.";

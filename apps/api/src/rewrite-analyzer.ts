@@ -36,6 +36,13 @@ const attributionVerbRoots = [
   "opin", "pid", "plante", "propon", "propus", "rechaz", "reclam", "reconoc", "remarc", "respond",
   "senal", "sosten", "sostuv", "subray",
 ] as const;
+const attributionVerbEndings = [
+  "aba", "aban", "abas", "abais", "abamos", "ado", "ados", "ando", "an",
+  "ara", "aran", "aras", "arais", "aramos", "are", "aremos", "ares", "areis",
+  "aria", "arian", "arias", "ariais", "ariamos", "aron", "as", "aste", "asteis",
+  "a", "e", "en", "emos", "eis", "eron", "es", "ia", "ian", "ias", "iais", "iamos",
+  "ido", "idos", "iendo", "i", "imos", "io", "ieron", "is", "iste", "isteis", "o",
+] as const;
 
 export interface RewriteAnalyzer {
   rewrite: (input: {
@@ -126,7 +133,9 @@ const textTokens = (text: string): readonly string[] =>
     .filter((token) => token !== "");
 
 const isAttributionVerb = (token: string): boolean =>
-  attributionVerbRoots.some((root) => token.startsWith(root));
+  attributionVerbRoots.some((root) =>
+    attributionVerbEndings.some((ending) => token === `${root}${ending}`),
+  );
 
 const attributionSubjectTokens = (text: string): readonly string[] | null => {
   const accordingTo = text.match(/^\s*según\s+([^,;:.!?]+)/iu);
