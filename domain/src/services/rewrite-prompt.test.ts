@@ -15,7 +15,7 @@ describe("rewrite prompt", () => {
   it("exposes a versioned template from the public domain API", () => {
     expect(rewritePrompt()).toMatchObject({
       id: "rewrite",
-      version: "9",
+      version: "10",
     });
   });
 
@@ -57,5 +57,6 @@ describe("rewrite prompt", () => {
     expect(rewritePrompt()?.instructions).toContain("exclusivamente de las representaciones");
     expect(rewritePrompt()?.instructions).toContain("una sola posición");
     expect(rewritePrompt()?.instructions).toContain("términos materiales");
+    expect(rewritePrompt()?.instructions).toContain("hechos nuevos");
   });
 });

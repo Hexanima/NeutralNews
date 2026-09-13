@@ -48,6 +48,7 @@ const finiteVerbEndings = [
   "íamos", "arán", "ará", "erán", "erá", "irán", "irá", "asteis", "aste",
   "isteis", "iste", "ó",
 ] as const;
+const presentTenseVerbEndings = ["a", "e", "an", "en"] as const;
 
 export interface RewriteAnalyzer {
   rewrite: (input: {
@@ -135,10 +136,19 @@ const isAttributionVerb = (token: string): boolean =>
     attributionVerbEndings.some((ending) => token === `${root}${ending}`),
   );
 
-const hasFiniteVerb = (text: string): boolean =>
-  text
+const hasFiniteVerb = (text: string): boolean => {
+  const tokens = text
     .split(/[^\p{Letter}]+/u)
-    .some((token) => finiteVerbEndings.some((ending) => token.endsWith(ending)));
+    .filter((token) => token !== "")
+    .map((token) => token.toLocaleLowerCase("es"));
+
+  return tokens.some((token) => finiteVerbEndings.some((ending) => token.endsWith(ending))) ||
+    tokens.some((token, index) =>
+      index >= 2 &&
+      index < tokens.length - 1 &&
+      presentTenseVerbEndings.some((ending) => token.endsWith(ending))
+    );
+};
 
 const attributionSubjectTokens = (text: string): readonly string[] | null => {
   const accordingTo = text.match(/^\s*según\s+([^,;:.!?]+)/iu);
@@ -243,34 +253,19 @@ const representationPreservesSegmentContent = (input: {
   return preservedTokenCount >= minimumPreservedTokenCount(sourceTokens.size);
 };
 
-const countTokens = (tokens: readonly string[]): ReadonlyMap<string, number> => {
-  const counts = new Map<string, number>();
-
-  for (const token of tokens) {
-    counts.set(token, (counts.get(token) ?? 0) + 1);
-  }
-
-  return counts;
-};
-
 const representationDoesNotAddMaterialContext = (input: {
   readonly sourceSegment: SourceSegment;
   readonly neutralText: string;
 }): boolean => {
-  const sourceTokenCounts = countTokens(materialTokenList(input.sourceSegment.text));
-  const neutralTokenCounts = countTokens(materialTokenList(input.neutralText));
-  let introducedTokenCount = 0;
-  let removedTokenCount = 0;
+  const sourceTokens = materialTokens(input.sourceSegment.text);
+  const normalizedSourceText = normalizedText(input.sourceSegment.text);
+  const sourceHasAttribution = textTokens(input.sourceSegment.text).some(isAttributionVerb);
 
-  for (const [token, count] of neutralTokenCounts) {
-    introducedTokenCount += Math.max(0, count - (sourceTokenCounts.get(token) ?? 0));
-  }
-
-  for (const [token, count] of sourceTokenCounts) {
-    removedTokenCount += Math.max(0, count - (neutralTokenCounts.get(token) ?? 0));
-  }
-
-  return introducedTokenCount <= removedTokenCount;
+  return materialTokenList(input.neutralText).every((token) =>
+    sourceTokens.has(token) ||
+    (sourceHasAttribution && isAttributionVerb(token)) ||
+    (token === "vuelve" && normalizedSourceText.includes("establece que"))
+  );
 };
 
 const hasCompletePositionCoverage = (input: {

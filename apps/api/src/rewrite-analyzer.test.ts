@@ -28,7 +28,7 @@ const configuration: EffectiveAiProviderConfiguration = {
 };
 
 const biasedText = "El desastroso proyecto del Gobierno busca imponer una medida absurda.";
-const neutralText = "El proyecto del Gobierno propone una medida.";
+const neutralText = "El proyecto del Gobierno busca imponer una medida.";
 
 const change = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -145,6 +145,21 @@ describe("rewrite analyzer", () => {
     });
   });
 
+  it("rejects a replacement that introduces a different fact", async () => {
+    const text = "El Congreso debatió el proyecto.";
+    const neutralText = "El Congreso aprobó el proyecto.";
+    const { analyzer } = analyzerFor({
+      neutralText,
+      changes: [],
+      positions: [{ sourceSegmentIds: ["segment-1"], neutralText }],
+    });
+
+    await expect(analyzer.rewrite({ text })).resolves.toEqual({
+      ok: false,
+      error: expect.any(AiInvalidStructuredOutputError),
+    });
+  });
+
   it("rejects an omitted position after a contrastive clause", async () => {
     const text = "El Gobierno propuso reducir impuestos, pero la oposición afirmó que afectaría la recaudación.";
     const neutralText = "El Gobierno propuso reducir impuestos.";
@@ -178,6 +193,21 @@ describe("rewrite analyzer", () => {
   it("rejects an omitted position after a coordinated material clause", async () => {
     const text = "El diputado votó a favor y la senadora votó en contra.";
     const neutralText = "El diputado votó a favor.";
+    const { analyzer } = analyzerFor({
+      neutralText,
+      changes: [],
+      positions: [{ sourceSegmentIds: ["segment-1"], neutralText }],
+    });
+
+    await expect(analyzer.rewrite({ text })).resolves.toEqual({
+      ok: false,
+      error: expect.any(AiInvalidStructuredOutputError),
+    });
+  });
+
+  it("rejects an omitted position after a coordinated present-tense clause", async () => {
+    const text = "El diputado vota a favor y la senadora vota en contra.";
+    const neutralText = "El diputado vota a favor.";
     const { analyzer } = analyzerFor({
       neutralText,
       changes: [],
