@@ -115,8 +115,38 @@ describe("rewrite analyzer", () => {
     });
   });
 
+  it("rejects a position representation that adds an external statement", async () => {
+    const text = "El Congreso debatió el proyecto.";
+    const neutralText = "El Congreso debatió el proyecto. La economía creció.";
+    const { analyzer } = analyzerFor({
+      neutralText,
+      changes: [],
+      positions: [{ sourceSegmentIds: ["segment-1"], neutralText }],
+    });
+
+    await expect(analyzer.rewrite({ text })).resolves.toEqual({
+      ok: false,
+      error: expect.any(AiInvalidStructuredOutputError),
+    });
+  });
+
   it("rejects an omitted position after a contrastive clause", async () => {
     const text = "El Gobierno propuso reducir impuestos, pero la oposición afirmó que afectaría la recaudación.";
+    const neutralText = "El Gobierno propuso reducir impuestos.";
+    const { analyzer } = analyzerFor({
+      neutralText,
+      changes: [],
+      positions: [{ sourceSegmentIds: ["segment-1"], neutralText }],
+    });
+
+    await expect(analyzer.rewrite({ text })).resolves.toEqual({
+      ok: false,
+      error: expect.any(AiInvalidStructuredOutputError),
+    });
+  });
+
+  it("rejects an omitted position after a coordinated attributed clause", async () => {
+    const text = "El Gobierno propuso reducir impuestos y la oposición afirmó que afectaría la recaudación.";
     const neutralText = "El Gobierno propuso reducir impuestos.";
     const { analyzer } = analyzerFor({
       neutralText,

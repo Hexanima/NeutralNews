@@ -81,14 +81,6 @@ const maximumOutputItems = (
   return Math.min(absoluteMaximumOutputItems, requested);
 };
 
-const segmentText = (text: string): readonly SourceSegment[] =>
-  text
-    .trim()
-    .split(/(?:\r?\n)+|(?<=[.!?])\s+|,\s+(?=(?:pero|aunque|mientras(?:\s+que)?|sin embargo|no obstante)\b)/iu)
-    .map((segment) => segment.trim())
-    .filter((segment) => segment !== "")
-    .map((text, index) => ({ id: `segment-${index + 1}`, text }));
-
 const promptFor = (input: { readonly segments: readonly SourceSegment[] }): string => [
   `Prompt ${rewritePrompt.id} v${rewritePrompt.version}.`,
   rewritePrompt.instructions,
@@ -159,6 +151,40 @@ const attributionSubjectTokens = (text: string): readonly string[] | null => {
 
   return subjectTokens.length === 0 ? null : subjectTokens;
 };
+
+const splitCoordinatedAttributions = (text: string): readonly string[] => {
+  const clauses = text.split(/\s+y\s+/iu);
+
+  if (clauses.length < 2) {
+    return [text];
+  }
+
+  const segments = [clauses[0]!];
+
+  for (const clause of clauses.slice(1)) {
+    const previousSegment = segments[segments.length - 1]!;
+
+    if (
+      attributionSubjectTokens(previousSegment) !== null &&
+      attributionSubjectTokens(clause) !== null
+    ) {
+      segments.push(clause);
+    } else {
+      segments[segments.length - 1] = `${previousSegment} y ${clause}`;
+    }
+  }
+
+  return segments;
+};
+
+const segmentText = (text: string): readonly SourceSegment[] =>
+  text
+    .trim()
+    .split(/(?:\r?\n)+|(?<=[.!?])\s+|,\s+(?=(?:pero|aunque|mientras(?:\s+que)?|sin embargo|no obstante)\b)/iu)
+    .flatMap(splitCoordinatedAttributions)
+    .map((segment) => segment.trim())
+    .filter((segment) => segment !== "")
+    .map((text, index) => ({ id: `segment-${index + 1}`, text }));
 
 const representationPreservesAttribution = (input: {
   readonly sourceSegment: SourceSegment;
@@ -234,13 +260,15 @@ const hasCompletePositionCoverage = (input: {
     input.output.positions.every((position) => {
       const sourceSegment = sourceSegmentsById.get(position.sourceSegmentIds[0]!);
 
-      return sourceSegment !== undefined && representationPreservesSegmentContent({
-        sourceSegment,
-        neutralText: position.neutralText,
-      }) && representationPreservesAttribution({
-        sourceSegment,
-        neutralText: position.neutralText,
-      });
+      return sourceSegment !== undefined &&
+        segmentText(position.neutralText).length === 1 &&
+        representationPreservesSegmentContent({
+          sourceSegment,
+          neutralText: position.neutralText,
+        }) && representationPreservesAttribution({
+          sourceSegment,
+          neutralText: position.neutralText,
+        });
     });
 };
 
