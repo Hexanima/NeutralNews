@@ -30,6 +30,19 @@ Los errores no incluyen prompts, credenciales ni cuerpos de artículos:
 Si el cliente cierra la conexión, la cancelación se propaga a las operaciones de
 descubrimiento y generación en curso.
 
+## Reescritura
+
+`POST /api/rewrite` requiere sesión válida y un `Origin` permitido. Recibe
+`{ "text": "texto a reescribir" }` y devuelve directamente un `RewriteResult`
+con texto neutral, cambios justificados y advertencias. El texto se valida y
+limita antes de llamar al proveedor; no se registra en logs.
+
+Los errores no incluyen el texto recibido, prompts ni credenciales:
+
+- `400` — `InvalidRewriteText`
+- `502` — `RewriteProviderError`
+- `504` — `RewriteTimeout`
+
 ## Comandos
 
 - `yarn workspace api dev`
