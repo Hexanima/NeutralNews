@@ -84,7 +84,10 @@ const queryFrom = (body: unknown): string | null => {
 };
 
 const sendTriangulationError = (response: ServerResponse, error: unknown) => {
-  if (error instanceof PortLimitExceededError && error.limitName === "timeoutMs") {
+  if (
+    (error instanceof PortLimitExceededError && error.limitName === "timeoutMs") ||
+    (error instanceof ExternalPortError && error.category === "Timeout")
+  ) {
     sendJson(response, 504, { error: { code: "TriangulationTimeout" } });
     return;
   }

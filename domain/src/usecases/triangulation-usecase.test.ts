@@ -387,6 +387,28 @@ describe("triangulation use case", () => {
     expect(result).toEqual({ ok: false, error: failure });
   });
 
+  it("propagates a discovery failure when no evidence is available", async () => {
+    const entry = createEntry("1", "izquierda");
+    const failure = new PortLimitExceededError("rss.feed.read", "timeoutMs");
+    const editorialGeneration = createEditorialPort(triangulationFor({
+      evidence: [],
+      sourceIds: [],
+    }));
+
+    const result = await triangulateTopicUseCase.execute(
+      {
+        rssFeedReader: createFakeRssFeedReaderPort({ result: err(failure) }),
+        articleExtractor: createFakeArticleExtractorPort(),
+        webSearch: createFakeWebSearchPort(),
+        editorialGeneration,
+      },
+      { sources: [entry], query: "reforma laboral", selection },
+    );
+
+    expect(result).toEqual({ ok: false, error: failure });
+    expect(editorialGeneration.calls).toEqual([]);
+  });
+
   it("rejects editorial references that are absent from discovered evidence", async () => {
     const entry = createEntry("1", "izquierda");
     const article = createArticle("1", entry.source.id);

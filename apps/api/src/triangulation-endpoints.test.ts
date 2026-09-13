@@ -240,6 +240,24 @@ describe("triangulation endpoint", () => {
     });
   });
 
+  it("returns a structured timeout for an external timeout", async () => {
+    const response = await fetchFromApp(
+      await createEnvironment(),
+      { query: "reforma laboral" },
+      {
+        triangulationRequestOptions: {
+          triangulate: async () =>
+            err(new ExternalPortError("openai.responses.create", "Timeout")),
+        },
+      },
+    );
+
+    expect(response.status).toBe(504);
+    expect(await response.json()).toEqual({
+      error: { code: "TriangulationTimeout" },
+    });
+  });
+
   it.each([
     new AiProviderNotFoundError("missing-provider"),
     new AiModelNotFoundError("openai", "missing-model"),
