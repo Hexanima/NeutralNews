@@ -169,6 +169,31 @@ describe("rewrite endpoint", () => {
     expect(aiProvider.calls.generateStructuredResponse).toEqual([]);
   });
 
+  it("returns a validation error when text exceeds the local segment limit", async () => {
+    const aiProvider = createFakeAiGenerationPort({ output: {} });
+    const analyzer = createRewriteAnalyzer({
+      aiProvider,
+      configurationRepository: {
+        getEffectiveConfiguration: async () => ok(aiConfiguration),
+      },
+    });
+    const response = await requestRewrite(
+      await createEnvironment(),
+      { text: Array(33).fill("Una oración.").join(" ") },
+      {
+        rewriteRequestOptions: {
+          rewrite: async ({ text, signal }) => analyzer.rewrite({ text, options: { signal } }),
+        },
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: { code: "InvalidRewriteText" },
+    });
+    expect(aiProvider.calls.generateStructuredResponse).toEqual([]);
+  });
+
   it("returns a valid rewrite result for accepted text", async () => {
     const calls: { text: string; signal: AbortSignal }[] = [];
     const response = await requestRewrite(

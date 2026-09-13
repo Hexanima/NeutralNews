@@ -100,7 +100,10 @@ const sendRewriteError = (response: ServerResponse, error: unknown) => {
     return;
   }
 
-  if (error instanceof PortLimitExceededError && error.limitName === "maxBytes") {
+  if (
+    error instanceof PortLimitExceededError &&
+    error.operationName === "rewrite.analyze"
+  ) {
     sendInvalidText(response);
     return;
   }
