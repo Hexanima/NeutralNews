@@ -94,8 +94,16 @@ export interface TriangulationResultSnapshot {
   warnings: readonly EditorialWarningSnapshot[];
 }
 
+export const rewriteChangeTypes = [
+  "evaluative_language",
+  "attribution_of_intent",
+] as const;
+
+export type RewriteChangeType = (typeof rewriteChangeTypes)[number];
+
 export interface RewriteChange {
   id: UUID;
+  type: RewriteChangeType;
   originalText: string;
   neutralText: string;
   justification: string;
@@ -103,6 +111,7 @@ export interface RewriteChange {
 
 export interface RewriteChangeSnapshot {
   id: string;
+  type: string;
   originalText: string;
   neutralText: string;
   justification: string;
@@ -200,6 +209,7 @@ export type EditorialResultField =
   | "sourceId"
   | "evidenceFragmentIds"
   | "text"
+  | "type"
   | "neutralText"
   | "originalText"
   | "justification"
@@ -250,6 +260,8 @@ const feedStatuses = new Set<string>([
   "partial",
   "failed",
 ]);
+
+const rewriteChangeTypeSet = new Set<string>(rewriteChangeTypes);
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -874,13 +886,16 @@ const createRewriteChange = (
 
   const changeValue = record.value;
   const id = createUuid("id", changeValue.id);
+  const type = typeof changeValue.type === "string" && rewriteChangeTypeSet.has(changeValue.type)
+    ? ok(changeValue.type as RewriteChangeType)
+    : err(invalidValue("type", changeValue.type));
   const originalText = createNonEmptyText("originalText", changeValue.originalText);
   const neutralText = createNonEmptyText("neutralText", changeValue.neutralText);
   const justification = createNonEmptyText(
     "justification",
     changeValue.justification,
   );
-  const errors = collectErrors([id, originalText, neutralText, justification]);
+  const errors = collectErrors([id, type, originalText, neutralText, justification]);
 
   if (errors.length > 0) {
     return err(new InvalidEditorialResultError(errors));
@@ -888,6 +903,7 @@ const createRewriteChange = (
 
   return ok({
     id: resultValue(id),
+    type: resultValue(type),
     originalText: resultValue(originalText),
     neutralText: resultValue(neutralText),
     justification: resultValue(justification),
@@ -946,6 +962,7 @@ export const toRewriteResultSnapshot = (
   neutralText: result.neutralText,
   changes: result.changes.map((change) => ({
     id: change.id,
+    type: change.type,
     originalText: change.originalText,
     neutralText: change.neutralText,
     justification: change.justification,

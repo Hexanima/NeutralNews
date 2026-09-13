@@ -81,6 +81,7 @@ const validRewriteInput: RewriteResultSnapshot = {
   changes: [
     {
       id: "77777777-7777-4777-8777-777777777777",
+      type: "evaluative_language",
       originalText: "El polemico proyecto fue lanzado por el oficialismo.",
       neutralText: "El proyecto fue presentado por el bloque oficialista.",
       justification: "Se quito lenguaje valorativo no atribuido.",
@@ -307,6 +308,7 @@ describe("Editorial result contracts", () => {
     expect(isOk(result)).toBe(true);
     if (isOk(result)) {
       expect(result.value.neutralText).toBe(validRewriteInput.neutralText);
+      expect(result.value.changes[0]?.type).toBe("evaluative_language");
       expect(result.value.changes[0]?.justification).toContain("valorativo");
     }
   });
@@ -323,6 +325,30 @@ describe("Editorial result contracts", () => {
     });
 
     expect(isErr(result)).toBe(true);
+  });
+
+  it("rejects rewrite changes without a recognized type", () => {
+    const missingType = createRewriteResult({
+      ...validRewriteInput,
+      changes: [
+        {
+          ...validRewriteInput.changes[0],
+          type: undefined,
+        },
+      ],
+    } as unknown as RewriteResultSnapshot);
+    const unknownType = createRewriteResult({
+      ...validRewriteInput,
+      changes: [
+        {
+          ...validRewriteInput.changes[0],
+          type: "invented_change",
+        },
+      ],
+    } as unknown as RewriteResultSnapshot);
+
+    expect(isErr(missingType)).toBe(true);
+    expect(isErr(unknownType)).toBe(true);
   });
 
   it("creates context results with factual context separated from media coverage", () => {
