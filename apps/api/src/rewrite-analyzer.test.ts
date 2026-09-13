@@ -208,6 +208,21 @@ describe("rewrite analyzer", () => {
     });
   });
 
+  it("accepts an attributed representation with a present-tense reporting verb", async () => {
+    const text = "El bloque plantea reducir impuestos.";
+    const neutralText = "El bloque propone reducir impuestos.";
+    const { analyzer } = analyzerFor({
+      neutralText,
+      changes: [],
+      positions: [{ sourceSegmentIds: ["segment-1"], neutralText }],
+    });
+
+    await expect(analyzer.rewrite({ text })).resolves.toEqual({
+      ok: true,
+      value: { neutralText, changes: [], warnings: [] },
+    });
+  });
+
   it("accepts a neutral rewrite of a declarative clause that is not attributed", async () => {
     const text = "El proyecto establece que la inscripción es obligatoria.";
     const neutralText = "El proyecto vuelve obligatoria la inscripción.";

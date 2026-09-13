@@ -33,7 +33,7 @@ const attributionVerbRoots = [
   "aclar", "acus", "admit", "advert", "afirm", "agreg", "aleg", "anad", "anunci",
   "argument", "asegur", "asever", "confirm", "consider", "critic", "cuestion", "declar",
   "defend", "denunci", "dij", "explic", "expres", "inform", "insist", "manifest", "neg",
-  "opin", "pid", "plante", "propus", "rechaz", "reclam", "reconoc", "remarc", "respond",
+  "opin", "pid", "plante", "propon", "propus", "rechaz", "reclam", "reconoc", "remarc", "respond",
   "senal", "sosten", "sostuv", "subray",
 ] as const;
 
