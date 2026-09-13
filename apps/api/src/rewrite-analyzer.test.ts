@@ -208,8 +208,25 @@ describe("rewrite analyzer", () => {
     });
   });
 
-  it("rejects an attribution with an unlisted reporting verb when its subject is removed", async () => {
-    const text = "La oposición denunció que la reforma recorta derechos laborales.";
+  it("accepts a neutral rewrite of a declarative clause that is not attributed", async () => {
+    const text = "El proyecto establece que la inscripción es obligatoria.";
+    const neutralText = "El proyecto vuelve obligatoria la inscripción.";
+    const { analyzer } = analyzerFor({
+      neutralText,
+      changes: [],
+      positions: [{ sourceSegmentIds: ["segment-1"], neutralText }],
+    });
+
+    await expect(analyzer.rewrite({ text })).resolves.toEqual({
+      ok: true,
+      value: { neutralText, changes: [], warnings: [] },
+    });
+  });
+
+  it.each([
+    "La oposición denunció que la reforma recorta derechos laborales.",
+    "La oposición acusó al Gobierno de recortar derechos laborales.",
+  ])("rejects an attributed statement when its subject is removed: %s", async (text) => {
     const neutralText = "La reforma recorta derechos laborales.";
     const { analyzer } = analyzerFor({
       neutralText,

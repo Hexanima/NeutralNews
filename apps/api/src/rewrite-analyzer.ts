@@ -29,6 +29,13 @@ const lowInformationTokens = new Set([
   "la", "las", "lo", "los", "para", "por", "que", "se", "su", "sus", "un",
   "una", "y",
 ]);
+const attributionVerbRoots = [
+  "aclar", "acus", "admit", "advert", "afirm", "agreg", "aleg", "anad", "anunci",
+  "argument", "asegur", "asever", "confirm", "consider", "critic", "cuestion", "declar",
+  "defend", "denunci", "dij", "explic", "expres", "inform", "insist", "manifest", "neg",
+  "opin", "pid", "plante", "propus", "rechaz", "reclam", "reconoc", "remarc", "respond",
+  "senal", "sosten", "sostuv", "subray",
+] as const;
 
 export interface RewriteAnalyzer {
   rewrite: (input: {
@@ -118,6 +125,9 @@ const textTokens = (text: string): readonly string[] =>
     .split(/[^\p{Letter}\p{Number}]+/u)
     .filter((token) => token !== "");
 
+const isAttributionVerb = (token: string): boolean =>
+  attributionVerbRoots.some((root) => token.startsWith(root));
+
 const attributionSubjectTokens = (text: string): readonly string[] | null => {
   const accordingTo = text.match(/^\s*según\s+([^,;:.!?]+)/iu);
 
@@ -128,14 +138,14 @@ const attributionSubjectTokens = (text: string): readonly string[] | null => {
   }
 
   const tokens = textTokens(text);
-  const thatIndex = tokens.indexOf("que");
+  const attributionVerbIndex = tokens.findIndex(isAttributionVerb);
 
-  if (thatIndex < 3) {
+  if (attributionVerbIndex < 1) {
     return null;
   }
 
   const subjectTokens = tokens
-    .slice(0, thatIndex - 1)
+    .slice(0, attributionVerbIndex)
     .filter((token) => !lowInformationTokens.has(token));
 
   return subjectTokens.length === 0 ? null : subjectTokens;
@@ -151,15 +161,16 @@ const representationPreservesAttribution = (input: {
     return true;
   }
 
-  const neutralTokens = new Set(textTokens(input.neutralText));
+  const neutralTextTokens = textTokens(input.neutralText);
+  const neutralTokens = new Set(neutralTextTokens);
   const normalizedNeutralText = normalizedText(input.neutralText);
-  const thatIndex = textTokens(input.neutralText).indexOf("que");
   const finalSubjectIndex = Math.max(
-    ...subjectTokens.map((token) => textTokens(input.neutralText).lastIndexOf(token)),
+    ...subjectTokens.map((token) => neutralTextTokens.lastIndexOf(token)),
   );
   const preservesAccordingTo = normalizedNeutralText.startsWith("segun ");
-  const preservesDeclarativeAttribution =
-    finalSubjectIndex >= 0 && thatIndex >= finalSubjectIndex + 2;
+  const preservesDeclarativeAttribution = neutralTextTokens.some(
+    (token, index) => index > finalSubjectIndex && isAttributionVerb(token),
+  );
 
   return subjectTokens.every((token) => neutralTokens.has(token)) &&
     (preservesAccordingTo || preservesDeclarativeAttribution);
