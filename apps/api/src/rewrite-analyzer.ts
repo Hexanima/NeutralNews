@@ -29,6 +29,13 @@ const lowInformationTokens = new Set([
   "la", "las", "lo", "los", "para", "por", "que", "se", "su", "sus", "un",
   "una", "y",
 ]);
+const attributionVerbs = new Set([
+  "advirtio", "advirtieron", "afirma", "afirmo", "afirmaron", "agrego",
+  "agregaron", "aseguro", "aseguraron", "considero", "consideraron", "declaro",
+  "declararon", "dijo", "dijeron", "expreso", "expresaron", "indico", "indicaron",
+  "manifesto", "manifestaron", "planteo", "plantearon", "sostiene", "sostuvo",
+  "sostuvieron", "senalo", "senalaron",
+]);
 
 export interface RewriteAnalyzer {
   rewrite: (input: {
@@ -113,6 +120,42 @@ const materialTokens = (text: string): ReadonlySet<string> => new Set(
     .filter((token) => token !== "" && !lowInformationTokens.has(token)),
 );
 
+const textTokens = (text: string): readonly string[] =>
+  normalizedText(text)
+    .split(/[^\p{Letter}\p{Number}]+/u)
+    .filter((token) => token !== "");
+
+const attributionSubjectTokens = (text: string): readonly string[] | null => {
+  const tokens = textTokens(text);
+  const attributionVerbIndex = tokens.findIndex((token) => attributionVerbs.has(token));
+
+  if (attributionVerbIndex < 1) {
+    return null;
+  }
+
+  const subjectTokens = tokens
+    .slice(0, attributionVerbIndex)
+    .filter((token) => !lowInformationTokens.has(token));
+
+  return subjectTokens.length === 0 ? null : subjectTokens;
+};
+
+const representationPreservesAttribution = (input: {
+  readonly sourceSegment: SourceSegment;
+  readonly neutralText: string;
+}): boolean => {
+  const subjectTokens = attributionSubjectTokens(input.sourceSegment.text);
+
+  if (subjectTokens === null) {
+    return true;
+  }
+
+  const neutralTokens = new Set(textTokens(input.neutralText));
+
+  return subjectTokens.every((token) => neutralTokens.has(token)) &&
+    [...neutralTokens].some((token) => attributionVerbs.has(token));
+};
+
 const minimumPreservedTokenCount = (tokenCount: number): number =>
   tokenCount < 3
     ? 1
@@ -160,6 +203,9 @@ const hasCompletePositionCoverage = (input: {
       const sourceSegment = sourceSegmentsById.get(position.sourceSegmentIds[0]!);
 
       return sourceSegment !== undefined && representationPreservesSegmentContent({
+        sourceSegment,
+        neutralText: position.neutralText,
+      }) && representationPreservesAttribution({
         sourceSegment,
         neutralText: position.neutralText,
       });

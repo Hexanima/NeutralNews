@@ -176,6 +176,38 @@ describe("rewrite analyzer", () => {
     });
   });
 
+  it("rejects a representation that removes a material attribution", async () => {
+    const text = "La oposición sostuvo que la reforma recorta derechos laborales.";
+    const { analyzer } = analyzerFor({
+      neutralText: "La reforma recorta derechos laborales.",
+      changes: [],
+      positions: [{
+        sourceSegmentIds: ["segment-1"],
+        neutralText: "La reforma recorta derechos laborales.",
+      }],
+    });
+
+    await expect(analyzer.rewrite({ text })).resolves.toEqual({
+      ok: false,
+      error: expect.any(AiInvalidStructuredOutputError),
+    });
+  });
+
+  it("accepts an attributed representation with a different reporting verb", async () => {
+    const text = "La oposición sostuvo que la reforma recorta derechos laborales.";
+    const neutralText = "La oposición afirmó que la reforma recorta derechos laborales.";
+    const { analyzer } = analyzerFor({
+      neutralText,
+      changes: [],
+      positions: [{ sourceSegmentIds: ["segment-1"], neutralText }],
+    });
+
+    await expect(analyzer.rewrite({ text })).resolves.toEqual({
+      ok: true,
+      value: { neutralText, changes: [], warnings: [] },
+    });
+  });
+
   it("enforces the requested maximum for changes after the provider responds", async () => {
     const text = "El polémico y costoso proyecto fue presentado.";
     const neutralPosition = "El proyecto fue presentado.";
