@@ -56,6 +56,7 @@ describe("rewrite structured output", () => {
     ["an empty justification", { ...validOutput, changes: [{ ...validOutput.changes[0], justification: "" }] }],
     ["an invalid change id", { ...validOutput, changes: [{ ...validOutput.changes[0], id: "not-a-uuid" }] }],
     ["a position without source segments", { ...validOutput, positions: [{ ...validOutput.positions[0], sourceSegmentIds: [] }] }],
+    ["a position with multiple source segments", { ...validOutput, positions: [{ ...validOutput.positions[0], sourceSegmentIds: ["segment-1", "segment-2"] }] }],
     ["a position with an invalid source segment id", { ...validOutput, positions: [{ ...validOutput.positions[0], sourceSegmentIds: ["source-1"] }] }],
     ["an empty neutral representation of a position", { ...validOutput, positions: [{ ...validOutput.positions[0], neutralText: " " }] }],
   ])("rejects %s", (_description, output) => {
@@ -68,7 +69,7 @@ describe("rewrite structured output", () => {
   });
 
   it("publishes a strict, versioned JSON Schema compatible with structured outputs", () => {
-    expect(publicApi.rewriteOutputSchemaVersion).toBe("2");
+    expect(publicApi.rewriteOutputSchemaVersion).toBe("3");
     expect(schema()).toMatchObject({
       type: "object",
       additionalProperties: false,

@@ -22,6 +22,8 @@ import type { JsonAiProviderConfigurationRepository } from "./ai-provider-config
 
 const operationName = "rewrite.analyze";
 const defaultMaximumInputBytes = 24 * 1024;
+const defaultMaximumOutputItems = 32;
+const absoluteMaximumOutputItems = 64;
 
 export interface RewriteAnalyzer {
   rewrite: (input: {
@@ -48,6 +50,18 @@ const maximumInputBytes = (options: LimitedPortOperationOptions | undefined): nu
     ? defaultMaximumInputBytes
     : Math.max(0, Math.floor(options.maxBytes));
 
+const maximumOutputItems = (
+  options: LimitedPortOperationOptions | undefined,
+): number | null => {
+  const requested = options?.maxItems ?? defaultMaximumOutputItems;
+
+  if (!Number.isInteger(requested) || requested < 1) {
+    return null;
+  }
+
+  return Math.min(absoluteMaximumOutputItems, requested);
+};
+
 const segmentText = (text: string): readonly SourceSegment[] =>
   text
     .trim()
@@ -65,6 +79,21 @@ const promptFor = (input: { readonly segments: readonly SourceSegment[] }): stri
   JSON.stringify(input.segments),
 ].join("\n\n");
 
+const outputSchemaWithLimits = (maximumItems: number) => ({
+  ...rewriteOutputSchema,
+  properties: {
+    ...rewriteOutputSchema.properties,
+    changes: {
+      ...rewriteOutputSchema.properties.changes,
+      maxItems: maximumItems,
+    },
+    positions: {
+      ...rewriteOutputSchema.properties.positions,
+      maxItems: maximumItems,
+    },
+  },
+});
+
 const normalizedText = (text: string): string =>
   text
     .normalize("NFD")
@@ -80,15 +109,26 @@ const hasCompletePositionCoverage = (input: {
   const expectedIds = new Set(input.sourceSegments.map((segment) => segment.id));
   const coveredIds = input.output.positions.flatMap((position) => position.sourceSegmentIds);
   const coveredIdSet = new Set(coveredIds);
+  const neutralRepresentations = input.output.positions.map((position) =>
+    normalizedText(position.neutralText),
+  );
   const rewrittenText = normalizedText(input.output.neutralText);
 
   return coveredIds.length === expectedIds.size &&
     coveredIdSet.size === expectedIds.size &&
     [...coveredIdSet].every((id) => expectedIds.has(id)) &&
+    new Set(neutralRepresentations).size === neutralRepresentations.length &&
     input.output.positions.every((position) =>
       rewrittenText.includes(normalizedText(position.neutralText))
     );
 };
+
+const outputFitsMaximumItems = (
+  output: RewriteStructuredOutput,
+  maximumItems: number,
+): boolean =>
+  output.changes.length <= maximumItems &&
+  output.positions.length <= maximumItems;
 
 const changeFragmentsBelongToInput = (input: {
   readonly output: RewriteStructuredOutput;
@@ -124,11 +164,21 @@ export const createRewriteAnalyzer = ({
       return err(new PortCancelledError(operationName));
     }
 
+    const maximumItems = maximumOutputItems(options);
+
+    if (maximumItems === null) {
+      return err(new PortLimitExceededError(operationName, "maxItems"));
+    }
+
     const sourceSegments = segmentText(text);
     const prompt = promptFor({ segments: sourceSegments });
 
     if (Buffer.byteLength(prompt, "utf8") > maximumInputBytes(options)) {
       return err(new PortLimitExceededError(operationName, "maxBytes"));
+    }
+
+    if (sourceSegments.length > maximumItems) {
+      return err(new PortLimitExceededError(operationName, "maxItems"));
     }
 
     const configuration = await configurationRepository.getEffectiveConfiguration();
@@ -156,7 +206,7 @@ export const createRewriteAnalyzer = ({
       selection: configuration.value.activeSelection,
       requiredCapabilities: ["structured_outputs"],
       prompt,
-      outputSchema: rewriteOutputSchema,
+      outputSchema: outputSchemaWithLimits(maximumItems),
       options,
     });
 
@@ -169,6 +219,7 @@ export const createRewriteAnalyzer = ({
     if (
       !structuredOutput.ok ||
       generated.value.citations.length > 0 ||
+      !outputFitsMaximumItems(structuredOutput.value, maximumItems) ||
       !hasCompletePositionCoverage({
         output: structuredOutput.value,
         sourceSegments,

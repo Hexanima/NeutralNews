@@ -88,7 +88,7 @@ describe("rewrite analyzer", () => {
 
   it("accepts an already neutral text without changes", async () => {
     const text = "El bloque presentó el proyecto ante el Congreso.";
-    const { analyzer } = analyzerFor({
+    const { aiProvider, analyzer } = analyzerFor({
       neutralText: text,
       changes: [],
       positions: [{ sourceSegmentIds: ["segment-1"], neutralText: text }],
@@ -102,7 +102,7 @@ describe("rewrite analyzer", () => {
 
   it("rejects a response that omits one of several source positions", async () => {
     const text = "El Gobierno afirmó que la reforma reduce impuestos. La oposición sostuvo que recorta derechos.";
-    const { analyzer } = analyzerFor({
+    const { aiProvider, analyzer } = analyzerFor({
       neutralText: text,
       changes: [],
       positions: [{
@@ -114,6 +114,75 @@ describe("rewrite analyzer", () => {
     await expect(analyzer.rewrite({ text })).resolves.toEqual({
       ok: false,
       error: expect.any(AiInvalidStructuredOutputError),
+    });
+  });
+
+  it("rejects one neutral representation assigned to several source positions", async () => {
+    const text = "El Gobierno afirmó que la reforma reduce impuestos. La oposición sostuvo que recorta derechos.";
+    const neutralPosition = "El Gobierno afirmó que la reforma reduce impuestos.";
+    const { analyzer } = analyzerFor({
+      neutralText: neutralPosition,
+      changes: [],
+      positions: [{
+        sourceSegmentIds: ["segment-1", "segment-2"],
+        neutralText: neutralPosition,
+      }],
+    });
+
+    await expect(analyzer.rewrite({ text })).resolves.toEqual({
+      ok: false,
+      error: expect.any(AiInvalidStructuredOutputError),
+    });
+  });
+
+  it("rejects repeated neutral representations for separate source positions", async () => {
+    const text = "El Gobierno afirmó que la reforma reduce impuestos. La oposición sostuvo que recorta derechos.";
+    const neutralPosition = "El Gobierno afirmó que la reforma reduce impuestos.";
+    const { analyzer } = analyzerFor({
+      neutralText: neutralPosition,
+      changes: [],
+      positions: [
+        { sourceSegmentIds: ["segment-1"], neutralText: neutralPosition },
+        { sourceSegmentIds: ["segment-2"], neutralText: neutralPosition },
+      ],
+    });
+
+    await expect(analyzer.rewrite({ text })).resolves.toEqual({
+      ok: false,
+      error: expect.any(AiInvalidStructuredOutputError),
+    });
+  });
+
+  it("enforces the requested maximum for changes after the provider responds", async () => {
+    const text = "El polémico y costoso proyecto fue presentado.";
+    const neutralPosition = "El proyecto fue presentado.";
+    const { aiProvider, analyzer } = analyzerFor({
+      neutralText: neutralPosition,
+      changes: [
+        {
+          ...change,
+          originalText: "polémico",
+          neutralText: "cuestionado",
+        },
+        {
+          ...change,
+          id: "22222222-2222-4222-8222-222222222222",
+          originalText: "costoso",
+          neutralText: "de alto costo",
+        },
+      ],
+      positions: [{ sourceSegmentIds: ["segment-1"], neutralText: neutralPosition }],
+    });
+
+    await expect(analyzer.rewrite({ text, options: { maxItems: 1 } })).resolves.toEqual({
+      ok: false,
+      error: expect.any(AiInvalidStructuredOutputError),
+    });
+    expect(aiProvider.calls.generateStructuredResponse[0]?.outputSchema).toMatchObject({
+      properties: {
+        changes: { maxItems: 1 },
+        positions: { maxItems: 1 },
+      },
     });
   });
 

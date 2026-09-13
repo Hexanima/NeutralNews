@@ -6,7 +6,7 @@ import { TaggedError } from "../types/error.js";
 import { err, ok, type Result } from "../types/result.js";
 import type { UUID } from "../types/uuid.js";
 
-export const rewriteOutputSchemaVersion = "2";
+export const rewriteOutputSchemaVersion = "3";
 
 export interface RewriteStructuredChange {
   id: UUID;
@@ -116,7 +116,7 @@ const parseSourceSegmentIds = (
 ): Result<readonly string[], InvalidRewriteStructuredOutputError> => {
   if (
     !Array.isArray(value) ||
-    value.length === 0 ||
+    value.length !== 1 ||
     value.some((id) => typeof id !== "string" || !segmentIdPattern.test(id))
   ) {
     return invalid(field);
@@ -222,6 +222,7 @@ export const rewriteOutputSchema = {
           sourceSegmentIds: {
             type: "array",
             minItems: 1,
+            maxItems: 1,
             items: { type: "string", pattern: segmentIdPattern.source },
           },
           neutralText: nonEmptyTextSchema,
