@@ -14,6 +14,7 @@ import {
   type TriangulationResult,
 } from "../entities/editorial-result.js";
 import type { AiModelSelection } from "../ai/index.js";
+import type { NewsSourceCatalogEntry } from "../catalog/news-source-catalog.js";
 import type { NewsSource, NewsSourceOrientation } from "../entities/news-source.js";
 import { err } from "../types/result.js";
 import type { UseCase } from "../types/usecase.js";
@@ -113,6 +114,37 @@ const errorFromDiscoveryFailure = (
   return new ExternalPortError(operationName, "PermanentFailure");
 };
 
+const allConfiguredRssSourcesFailed = (input: {
+  readonly sources: readonly NewsSourceCatalogEntry[];
+  readonly failures: readonly HybridDiscoveryFailure[];
+}): boolean => {
+  const configuredSourceIds = input.sources
+    .filter(
+      ({ source, discovery }) =>
+        source.active &&
+        source.approvalStatus === "approved" &&
+        discovery.mode === "rss",
+    )
+    .map(({ source }) => source.id);
+
+  if (configuredSourceIds.length === 0) {
+    return false;
+  }
+
+  const failedSourceIds = new Set(
+    input.failures
+      .filter(
+        (failure) =>
+          failure.stage === "rss" &&
+          failure.errorType !== "PartialExtraction" &&
+          failure.sourceId !== undefined,
+      )
+      .map((failure) => failure.sourceId),
+  );
+
+  return configuredSourceIds.every((sourceId) => failedSourceIds.has(sourceId));
+};
+
 const discoveryWarnings = (input: {
   readonly coverage: "complete" | "partial";
   readonly failedSourceCount: number;
@@ -202,9 +234,16 @@ export const triangulateTopicUseCase: UseCase<
     }
 
     if (discovery.value.evidence.length === 0) {
-      const failedDiscovery = discovery.value.failedSources.find(
-        (failure) => failure.errorType !== "PartialExtraction",
-      );
+      const failedDiscovery = allConfiguredRssSourcesFailed({
+        sources: payload.sources,
+        failures: discovery.value.failedSources,
+      })
+        ? discovery.value.failedSources.find(
+            (failure) =>
+              failure.stage === "rss" &&
+              failure.errorType !== "PartialExtraction",
+          )
+        : undefined;
 
       if (failedDiscovery !== undefined) {
         return err(errorFromDiscoveryFailure(failedDiscovery));
