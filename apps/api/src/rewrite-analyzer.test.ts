@@ -153,6 +153,29 @@ describe("rewrite analyzer", () => {
     });
   });
 
+  it("rejects a generic representation that omits a source position's content", async () => {
+    const text = "El Gobierno afirmó que la reforma reduce impuestos. La oposición sostuvo que recorta derechos.";
+    const { analyzer } = analyzerFor({
+      neutralText: "El Gobierno afirmó que la reforma reduce impuestos. El tema generó debate.",
+      changes: [],
+      positions: [
+        {
+          sourceSegmentIds: ["segment-1"],
+          neutralText: "El Gobierno afirmó que la reforma reduce impuestos.",
+        },
+        {
+          sourceSegmentIds: ["segment-2"],
+          neutralText: "El tema generó debate.",
+        },
+      ],
+    });
+
+    await expect(analyzer.rewrite({ text })).resolves.toEqual({
+      ok: false,
+      error: expect.any(AiInvalidStructuredOutputError),
+    });
+  });
+
   it("enforces the requested maximum for changes after the provider responds", async () => {
     const text = "El polémico y costoso proyecto fue presentado.";
     const neutralPosition = "El proyecto fue presentado.";

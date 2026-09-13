@@ -24,6 +24,11 @@ const operationName = "rewrite.analyze";
 const defaultMaximumInputBytes = 24 * 1024;
 const defaultMaximumOutputItems = 32;
 const absoluteMaximumOutputItems = 64;
+const lowInformationTokens = new Set([
+  "a", "al", "ante", "con", "de", "del", "el", "en", "es", "fue", "ha",
+  "la", "las", "lo", "los", "para", "por", "que", "se", "su", "sus", "un",
+  "una", "y",
+]);
 
 export interface RewriteAnalyzer {
   rewrite: (input: {
@@ -102,11 +107,41 @@ const normalizedText = (text: string): string =>
     .trim()
     .toLocaleLowerCase("es");
 
+const materialTokens = (text: string): ReadonlySet<string> => new Set(
+  normalizedText(text)
+    .split(/[^\p{Letter}\p{Number}]+/u)
+    .filter((token) => token !== "" && !lowInformationTokens.has(token)),
+);
+
+const minimumPreservedTokenCount = (tokenCount: number): number =>
+  tokenCount < 3
+    ? 1
+    : Math.max(2, Math.ceil(tokenCount / 3));
+
+const representationPreservesSegmentContent = (input: {
+  readonly sourceSegment: SourceSegment;
+  readonly neutralText: string;
+}): boolean => {
+  const sourceTokens = materialTokens(input.sourceSegment.text);
+
+  if (sourceTokens.size === 0) {
+    return true;
+  }
+
+  const neutralTokens = materialTokens(input.neutralText);
+  const preservedTokenCount = [...sourceTokens].filter((token) => neutralTokens.has(token)).length;
+
+  return preservedTokenCount >= minimumPreservedTokenCount(sourceTokens.size);
+};
+
 const hasCompletePositionCoverage = (input: {
   readonly output: RewriteStructuredOutput;
   readonly sourceSegments: readonly SourceSegment[];
 }): boolean => {
   const expectedIds = new Set(input.sourceSegments.map((segment) => segment.id));
+  const sourceSegmentsById = new Map(
+    input.sourceSegments.map((segment) => [segment.id, segment]),
+  );
   const coveredIds = input.output.positions.flatMap((position) => position.sourceSegmentIds);
   const coveredIdSet = new Set(coveredIds);
   const neutralRepresentations = input.output.positions.map((position) =>
@@ -120,7 +155,15 @@ const hasCompletePositionCoverage = (input: {
     new Set(neutralRepresentations).size === neutralRepresentations.length &&
     input.output.positions.every((position) =>
       rewrittenText.includes(normalizedText(position.neutralText))
-    );
+    ) &&
+    input.output.positions.every((position) => {
+      const sourceSegment = sourceSegmentsById.get(position.sourceSegmentIds[0]!);
+
+      return sourceSegment !== undefined && representationPreservesSegmentContent({
+        sourceSegment,
+        neutralText: position.neutralText,
+      });
+    });
 };
 
 const outputFitsMaximumItems = (
