@@ -27,7 +27,7 @@ const absoluteMaximumOutputItems = 64;
 const lowInformationTokens = new Set([
   "a", "al", "ante", "con", "de", "del", "el", "en", "es", "fue", "ha",
   "la", "las", "lo", "los", "para", "por", "que", "se", "su", "sus", "un",
-  "una", "y",
+  "una", "y", "pero",
 ]);
 const attributionVerbRoots = [
   "aclar", "acus", "admit", "advert", "afirm", "agreg", "aleg", "anad", "anunci",
@@ -84,7 +84,7 @@ const maximumOutputItems = (
 const segmentText = (text: string): readonly SourceSegment[] =>
   text
     .trim()
-    .split(/(?:\r?\n)+|(?<=[.!?])\s+/u)
+    .split(/(?:\r?\n)+|(?<=[.!?])\s+|,\s+(?=(?:pero|aunque|mientras(?:\s+que)?|sin embargo|no obstante)\b)/iu)
     .map((segment) => segment.trim())
     .filter((segment) => segment !== "")
     .map((text, index) => ({ id: `segment-${index + 1}`, text }));
@@ -219,15 +219,18 @@ const hasCompletePositionCoverage = (input: {
   const neutralRepresentations = input.output.positions.map((position) =>
     normalizedText(position.neutralText),
   );
-  const rewrittenText = normalizedText(input.output.neutralText);
+  const positionsBySourceSegmentId = new Map(
+    input.output.positions.map((position) => [position.sourceSegmentIds[0]!, position]),
+  );
+  const concatenatedPositionText = input.sourceSegments
+    .map((segment) => positionsBySourceSegmentId.get(segment.id)?.neutralText ?? "")
+    .join(" ");
 
   return coveredIds.length === expectedIds.size &&
     coveredIdSet.size === expectedIds.size &&
     [...coveredIdSet].every((id) => expectedIds.has(id)) &&
     new Set(neutralRepresentations).size === neutralRepresentations.length &&
-    input.output.positions.every((position) =>
-      rewrittenText.includes(normalizedText(position.neutralText))
-    ) &&
+    normalizedText(input.output.neutralText) === normalizedText(concatenatedPositionText) &&
     input.output.positions.every((position) => {
       const sourceSegment = sourceSegmentsById.get(position.sourceSegmentIds[0]!);
 

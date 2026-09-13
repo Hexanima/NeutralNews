@@ -100,6 +100,36 @@ describe("rewrite analyzer", () => {
     });
   });
 
+  it("rejects neutral text with content not covered by a source position", async () => {
+    const text = "El Congreso debatió el proyecto.";
+    const positionText = "El Congreso debatió el proyecto.";
+    const { analyzer } = analyzerFor({
+      neutralText: `${positionText} La economía creció.`,
+      changes: [],
+      positions: [{ sourceSegmentIds: ["segment-1"], neutralText: positionText }],
+    });
+
+    await expect(analyzer.rewrite({ text })).resolves.toEqual({
+      ok: false,
+      error: expect.any(AiInvalidStructuredOutputError),
+    });
+  });
+
+  it("rejects an omitted position after a contrastive clause", async () => {
+    const text = "El Gobierno propuso reducir impuestos, pero la oposición afirmó que afectaría la recaudación.";
+    const neutralText = "El Gobierno propuso reducir impuestos.";
+    const { analyzer } = analyzerFor({
+      neutralText,
+      changes: [],
+      positions: [{ sourceSegmentIds: ["segment-1"], neutralText }],
+    });
+
+    await expect(analyzer.rewrite({ text })).resolves.toEqual({
+      ok: false,
+      error: expect.any(AiInvalidStructuredOutputError),
+    });
+  });
+
   it("rejects a response that omits one of several source positions", async () => {
     const text = "El Gobierno afirmó que la reforma reduce impuestos. La oposición sostuvo que recorta derechos.";
     const { aiProvider, analyzer } = analyzerFor({
