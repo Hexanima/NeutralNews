@@ -1,6 +1,8 @@
 import {
   type ArticleExtractorPort,
   type EditorialGenerationPort,
+  ExternalPortError,
+  PortLimitExceededError,
   type PortError,
   type RssFeedReaderPort,
   type WebSearchPort,
@@ -12,6 +14,7 @@ import {
   type TriangulationResult,
 } from "../entities/editorial-result.js";
 import type { AiModelSelection } from "../ai/index.js";
+import type { NewsSourceCatalogEntry } from "../catalog/news-source-catalog.js";
 import type { NewsSource, NewsSourceOrientation } from "../entities/news-source.js";
 import { err } from "../types/result.js";
 import type { UseCase } from "../types/usecase.js";
@@ -23,6 +26,7 @@ import {
 import {
   discoverHybridEvidenceUseCase,
   type DiscoverHybridEvidencePayload,
+  type HybridDiscoveryFailure,
 } from "./hybrid-discovery-usecase.js";
 
 const requiredCapabilities = ["structured_outputs", "reasoning_medium"] as const;
@@ -64,6 +68,82 @@ const insufficientEvidenceResult = (): ReturnType<typeof createTriangulationResu
       message: "No se encontró evidencia utilizable para realizar la triangulación.",
     }],
   });
+
+const externalFailureCategories = new Set([
+  "Timeout",
+  "Cancelled",
+  "TransientFailure",
+  "PermanentFailure",
+]);
+
+const portLimitNames = new Set([
+  "timeoutMs",
+  "maxItems",
+  "maxBytes",
+  "maxConcurrency",
+  "maxRedirects",
+]);
+
+const errorFromDiscoveryFailure = (
+  failure: HybridDiscoveryFailure,
+): PortError => {
+  const operationName = failure.operationName ?? "discovery.hybrid";
+
+  if (
+    failure.errorType === "PortLimitExceeded" &&
+    failure.limitName !== undefined &&
+    portLimitNames.has(failure.limitName)
+  ) {
+    return new PortLimitExceededError(
+      operationName,
+      failure.limitName as ConstructorParameters<typeof PortLimitExceededError>[1],
+    );
+  }
+
+  if (
+    failure.errorType === "ExternalPortError" &&
+    failure.category !== undefined &&
+    externalFailureCategories.has(failure.category)
+  ) {
+    return new ExternalPortError(
+      operationName,
+      failure.category as ConstructorParameters<typeof ExternalPortError>[1],
+    );
+  }
+
+  return new ExternalPortError(operationName, "PermanentFailure");
+};
+
+const allConfiguredRssSourcesFailed = (input: {
+  readonly sources: readonly NewsSourceCatalogEntry[];
+  readonly failures: readonly HybridDiscoveryFailure[];
+}): boolean => {
+  const configuredSourceIds = input.sources
+    .filter(
+      ({ source, discovery }) =>
+        source.active &&
+        source.approvalStatus === "approved" &&
+        discovery.mode === "rss",
+    )
+    .map(({ source }) => source.id);
+
+  if (configuredSourceIds.length === 0) {
+    return false;
+  }
+
+  const failedSourceIds = new Set(
+    input.failures
+      .filter(
+        (failure) =>
+          failure.stage === "rss" &&
+          failure.errorType !== "PartialExtraction" &&
+          failure.sourceId !== undefined,
+      )
+      .map((failure) => failure.sourceId),
+  );
+
+  return configuredSourceIds.every((sourceId) => failedSourceIds.has(sourceId));
+};
 
 const discoveryWarnings = (input: {
   readonly coverage: "complete" | "partial";
@@ -154,6 +234,21 @@ export const triangulateTopicUseCase: UseCase<
     }
 
     if (discovery.value.evidence.length === 0) {
+      const failedDiscovery = allConfiguredRssSourcesFailed({
+        sources: payload.sources,
+        failures: discovery.value.failedSources,
+      })
+        ? discovery.value.failedSources.find(
+            (failure) =>
+              failure.stage === "rss" &&
+              failure.errorType !== "PartialExtraction",
+          )
+        : undefined;
+
+      if (failedDiscovery !== undefined) {
+        return err(errorFromDiscoveryFailure(failedDiscovery));
+      }
+
       return insufficientEvidenceResult();
     }
 

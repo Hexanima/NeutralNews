@@ -387,6 +387,69 @@ describe("triangulation use case", () => {
     expect(result).toEqual({ ok: false, error: failure });
   });
 
+  it("propagates a discovery failure when no evidence is available", async () => {
+    const entry = createEntry("1", "izquierda");
+    const failure = new PortLimitExceededError("rss.feed.read", "timeoutMs");
+    const editorialGeneration = createEditorialPort(triangulationFor({
+      evidence: [],
+      sourceIds: [],
+    }));
+
+    const result = await triangulateTopicUseCase.execute(
+      {
+        rssFeedReader: createFakeRssFeedReaderPort({ result: err(failure) }),
+        articleExtractor: createFakeArticleExtractorPort(),
+        webSearch: createFakeWebSearchPort(),
+        editorialGeneration,
+      },
+      { sources: [entry], query: "reforma laboral", selection },
+    );
+
+    expect(result).toEqual({ ok: false, error: failure });
+    expect(editorialGeneration.calls).toEqual([]);
+  });
+
+  it("returns insufficient evidence when one RSS source fails and another finds no articles", async () => {
+    const failedEntry = createEntry("1", "izquierda");
+    const emptyEntry = createEntry("2", "derecha");
+    const failure = new PortLimitExceededError("rss.feed.read", "timeoutMs");
+    const rssFeedReader = createFakeRssFeedReaderPort();
+    rssFeedReader.readFeed = async (input) =>
+      input.source.id === failedEntry.source.id
+        ? err(failure)
+        : ok({
+            sourceId: input.source.id,
+            feedUrl: input.feedUrl,
+            articles: [],
+            evidence: [],
+          });
+    const editorialGeneration = createEditorialPort(
+      triangulationFor({ evidence: [], sourceIds: [] }),
+    );
+
+    const result = await triangulateTopicUseCase.execute(
+      {
+        rssFeedReader,
+        articleExtractor: createFakeArticleExtractorPort(),
+        webSearch: createFakeWebSearchPort(),
+        editorialGeneration,
+      },
+      {
+        sources: [failedEntry, emptyEntry],
+        query: "reforma laboral",
+        selection,
+      },
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        warnings: [expect.objectContaining({ kind: "insufficient_evidence" })],
+      },
+    });
+    expect(editorialGeneration.calls).toEqual([]);
+  });
+
   it("rejects editorial references that are absent from discovered evidence", async () => {
     const entry = createEntry("1", "izquierda");
     const article = createArticle("1", entry.source.id);

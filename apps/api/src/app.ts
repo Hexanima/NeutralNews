@@ -31,6 +31,10 @@ import {
   type ConfigurationRequestOptions,
 } from "./configuration-endpoints.js";
 import {
+  handleTriangulationRequest,
+  type TriangulationRequestOptions,
+} from "./triangulation-endpoints.js";
+import {
   handleAiConfigurationRequest,
   type AiConfigurationRequestOptions,
 } from "./ai-configuration-endpoints.js";
@@ -77,6 +81,7 @@ export interface AppOptions {
   healthResponseFactory?: HealthResponseFactory;
   configurationRequestOptions?: ConfigurationRequestOptions | undefined;
   aiConfigurationRequestOptions?: AiConfigurationRequestOptions | undefined;
+  triangulationRequestOptions?: TriangulationRequestOptions | undefined;
   loginAttemptLimiter?: LoginAttemptLimiter;
 }
 
@@ -332,6 +337,18 @@ export const requestHandler = async (
       response,
       options.config,
       options.configurationRequestOptions,
+    )
+  ) {
+    return;
+  }
+
+  if (
+    await handleTriangulationRequest(
+      request,
+      response,
+      context.signal,
+      options.config,
+      options.triangulationRequestOptions,
     )
   ) {
     return;

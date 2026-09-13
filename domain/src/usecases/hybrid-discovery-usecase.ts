@@ -20,6 +20,7 @@ import {
   type ArticleExtractorPort,
   type LimitedPortOperationOptions,
   PortCancelledError,
+  PortLimitExceededError,
   type PortError,
   type RssFeedReaderPort,
   type WebSearchPort,
@@ -44,6 +45,7 @@ export interface HybridDiscoveryFailure {
   readonly sourceId?: UUID | undefined;
   readonly operationName?: string | undefined;
   readonly category?: string | undefined;
+  readonly limitName?: string | undefined;
 }
 
 export interface HybridDiscoveryResult {
@@ -227,6 +229,7 @@ const failureFromRss = (failure: AggregateRssFeedFailure): HybridDiscoveryFailur
   errorType: failure.errorType,
   ...(failure.operationName === undefined ? {} : { operationName: failure.operationName }),
   ...(failure.category === undefined ? {} : { category: failure.category }),
+  ...(failure.limitName === undefined ? {} : { limitName: failure.limitName }),
 });
 
 const failureFromPort = (
@@ -239,6 +242,7 @@ const failureFromPort = (
   ...(sourceId === undefined ? {} : { sourceId }),
   ...("operationName" in error ? { operationName: error.operationName } : {}),
   ...("category" in error ? { category: error.category } : {}),
+  ...(error instanceof PortLimitExceededError ? { limitName: error.limitName } : {}),
 });
 
 const partialExtractionFailure = (sourceId: UUID): HybridDiscoveryFailure => ({
