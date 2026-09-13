@@ -43,6 +43,11 @@ const attributionVerbEndings = [
   "a", "e", "en", "emos", "eis", "eron", "es", "ia", "ian", "ias", "iais", "iamos",
   "ido", "idos", "iendo", "i", "imos", "io", "ieron", "is", "iste", "isteis", "o",
 ] as const;
+const finiteVerbEndings = [
+  "aron", "ieron", "aban", "abas", "aba", "ábamos", "ían", "ías", "ía",
+  "íamos", "arán", "ará", "erán", "erá", "irán", "irá", "asteis", "aste",
+  "isteis", "iste", "ó",
+] as const;
 
 export interface RewriteAnalyzer {
   rewrite: (input: {
@@ -113,11 +118,12 @@ const normalizedText = (text: string): string =>
     .trim()
     .toLocaleLowerCase("es");
 
-const materialTokens = (text: string): ReadonlySet<string> => new Set(
+const materialTokenList = (text: string): readonly string[] =>
   normalizedText(text)
     .split(/[^\p{Letter}\p{Number}]+/u)
-    .filter((token) => token !== "" && !lowInformationTokens.has(token)),
-);
+    .filter((token) => token !== "" && !lowInformationTokens.has(token));
+
+const materialTokens = (text: string): ReadonlySet<string> => new Set(materialTokenList(text));
 
 const textTokens = (text: string): readonly string[] =>
   normalizedText(text)
@@ -128,6 +134,11 @@ const isAttributionVerb = (token: string): boolean =>
   attributionVerbRoots.some((root) =>
     attributionVerbEndings.some((ending) => token === `${root}${ending}`),
   );
+
+const hasFiniteVerb = (text: string): boolean =>
+  text
+    .split(/[^\p{Letter}]+/u)
+    .some((token) => finiteVerbEndings.some((ending) => token.endsWith(ending)));
 
 const attributionSubjectTokens = (text: string): readonly string[] | null => {
   const accordingTo = text.match(/^\s*según\s+([^,;:.!?]+)/iu);
@@ -165,8 +176,8 @@ const splitCoordinatedAttributions = (text: string): readonly string[] => {
     const previousSegment = segments[segments.length - 1]!;
 
     if (
-      attributionSubjectTokens(previousSegment) !== null &&
-      attributionSubjectTokens(clause) !== null
+      (attributionSubjectTokens(previousSegment) !== null || hasFiniteVerb(previousSegment)) &&
+      (attributionSubjectTokens(clause) !== null || hasFiniteVerb(clause))
     ) {
       segments.push(clause);
     } else {
@@ -232,6 +243,36 @@ const representationPreservesSegmentContent = (input: {
   return preservedTokenCount >= minimumPreservedTokenCount(sourceTokens.size);
 };
 
+const countTokens = (tokens: readonly string[]): ReadonlyMap<string, number> => {
+  const counts = new Map<string, number>();
+
+  for (const token of tokens) {
+    counts.set(token, (counts.get(token) ?? 0) + 1);
+  }
+
+  return counts;
+};
+
+const representationDoesNotAddMaterialContext = (input: {
+  readonly sourceSegment: SourceSegment;
+  readonly neutralText: string;
+}): boolean => {
+  const sourceTokenCounts = countTokens(materialTokenList(input.sourceSegment.text));
+  const neutralTokenCounts = countTokens(materialTokenList(input.neutralText));
+  let introducedTokenCount = 0;
+  let removedTokenCount = 0;
+
+  for (const [token, count] of neutralTokenCounts) {
+    introducedTokenCount += Math.max(0, count - (sourceTokenCounts.get(token) ?? 0));
+  }
+
+  for (const [token, count] of sourceTokenCounts) {
+    removedTokenCount += Math.max(0, count - (neutralTokenCounts.get(token) ?? 0));
+  }
+
+  return introducedTokenCount <= removedTokenCount;
+};
+
 const hasCompletePositionCoverage = (input: {
   readonly output: RewriteStructuredOutput;
   readonly sourceSegments: readonly SourceSegment[];
@@ -263,6 +304,9 @@ const hasCompletePositionCoverage = (input: {
       return sourceSegment !== undefined &&
         segmentText(position.neutralText).length === 1 &&
         representationPreservesSegmentContent({
+          sourceSegment,
+          neutralText: position.neutralText,
+        }) && representationDoesNotAddMaterialContext({
           sourceSegment,
           neutralText: position.neutralText,
         }) && representationPreservesAttribution({

@@ -130,6 +130,21 @@ describe("rewrite analyzer", () => {
     });
   });
 
+  it("rejects external context added within a single position sentence", async () => {
+    const text = "El Congreso debatió el proyecto.";
+    const neutralText = "El Congreso debatió el proyecto durante una reunión que confirmó el crecimiento económico.";
+    const { analyzer } = analyzerFor({
+      neutralText,
+      changes: [],
+      positions: [{ sourceSegmentIds: ["segment-1"], neutralText }],
+    });
+
+    await expect(analyzer.rewrite({ text })).resolves.toEqual({
+      ok: false,
+      error: expect.any(AiInvalidStructuredOutputError),
+    });
+  });
+
   it("rejects an omitted position after a contrastive clause", async () => {
     const text = "El Gobierno propuso reducir impuestos, pero la oposición afirmó que afectaría la recaudación.";
     const neutralText = "El Gobierno propuso reducir impuestos.";
@@ -148,6 +163,21 @@ describe("rewrite analyzer", () => {
   it("rejects an omitted position after a coordinated attributed clause", async () => {
     const text = "El Gobierno propuso reducir impuestos y la oposición afirmó que afectaría la recaudación.";
     const neutralText = "El Gobierno propuso reducir impuestos.";
+    const { analyzer } = analyzerFor({
+      neutralText,
+      changes: [],
+      positions: [{ sourceSegmentIds: ["segment-1"], neutralText }],
+    });
+
+    await expect(analyzer.rewrite({ text })).resolves.toEqual({
+      ok: false,
+      error: expect.any(AiInvalidStructuredOutputError),
+    });
+  });
+
+  it("rejects an omitted position after a coordinated material clause", async () => {
+    const text = "El diputado votó a favor y la senadora votó en contra.";
+    const neutralText = "El diputado votó a favor.";
     const { analyzer } = analyzerFor({
       neutralText,
       changes: [],
