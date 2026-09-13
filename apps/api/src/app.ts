@@ -35,6 +35,10 @@ import {
   type TriangulationRequestOptions,
 } from "./triangulation-endpoints.js";
 import {
+  handleRewriteRequest,
+  type RewriteRequestOptions,
+} from "./rewrite-endpoints.js";
+import {
   handleAiConfigurationRequest,
   type AiConfigurationRequestOptions,
 } from "./ai-configuration-endpoints.js";
@@ -82,6 +86,7 @@ export interface AppOptions {
   configurationRequestOptions?: ConfigurationRequestOptions | undefined;
   aiConfigurationRequestOptions?: AiConfigurationRequestOptions | undefined;
   triangulationRequestOptions?: TriangulationRequestOptions | undefined;
+  rewriteRequestOptions?: RewriteRequestOptions | undefined;
   loginAttemptLimiter?: LoginAttemptLimiter;
 }
 
@@ -349,6 +354,18 @@ export const requestHandler = async (
       context.signal,
       options.config,
       options.triangulationRequestOptions,
+    )
+  ) {
+    return;
+  }
+
+  if (
+    await handleRewriteRequest(
+      request,
+      response,
+      context.signal,
+      options.config,
+      options.rewriteRequestOptions,
     )
   ) {
     return;
