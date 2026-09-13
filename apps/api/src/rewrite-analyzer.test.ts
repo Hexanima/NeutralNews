@@ -208,6 +208,36 @@ describe("rewrite analyzer", () => {
     });
   });
 
+  it("rejects an attribution with an unlisted reporting verb when its subject is removed", async () => {
+    const text = "La oposición denunció que la reforma recorta derechos laborales.";
+    const neutralText = "La reforma recorta derechos laborales.";
+    const { analyzer } = analyzerFor({
+      neutralText,
+      changes: [],
+      positions: [{ sourceSegmentIds: ["segment-1"], neutralText }],
+    });
+
+    await expect(analyzer.rewrite({ text })).resolves.toEqual({
+      ok: false,
+      error: expect.any(AiInvalidStructuredOutputError),
+    });
+  });
+
+  it("rejects a según attribution when its subject is removed", async () => {
+    const text = "Según la oposición, la reforma recorta derechos laborales.";
+    const neutralText = "La reforma recorta derechos laborales.";
+    const { analyzer } = analyzerFor({
+      neutralText,
+      changes: [],
+      positions: [{ sourceSegmentIds: ["segment-1"], neutralText }],
+    });
+
+    await expect(analyzer.rewrite({ text })).resolves.toEqual({
+      ok: false,
+      error: expect.any(AiInvalidStructuredOutputError),
+    });
+  });
+
   it("enforces the requested maximum for changes after the provider responds", async () => {
     const text = "El polémico y costoso proyecto fue presentado.";
     const neutralPosition = "El proyecto fue presentado.";

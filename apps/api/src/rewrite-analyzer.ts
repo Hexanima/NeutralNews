@@ -29,13 +29,6 @@ const lowInformationTokens = new Set([
   "la", "las", "lo", "los", "para", "por", "que", "se", "su", "sus", "un",
   "una", "y",
 ]);
-const attributionVerbs = new Set([
-  "advirtio", "advirtieron", "afirma", "afirmo", "afirmaron", "agrego",
-  "agregaron", "aseguro", "aseguraron", "considero", "consideraron", "declaro",
-  "declararon", "dijo", "dijeron", "expreso", "expresaron", "indico", "indicaron",
-  "manifesto", "manifestaron", "planteo", "plantearon", "sostiene", "sostuvo",
-  "sostuvieron", "senalo", "senalaron",
-]);
 
 export interface RewriteAnalyzer {
   rewrite: (input: {
@@ -126,15 +119,23 @@ const textTokens = (text: string): readonly string[] =>
     .filter((token) => token !== "");
 
 const attributionSubjectTokens = (text: string): readonly string[] | null => {
-  const tokens = textTokens(text);
-  const attributionVerbIndex = tokens.findIndex((token) => attributionVerbs.has(token));
+  const accordingTo = text.match(/^\s*según\s+([^,;:.!?]+)/iu);
 
-  if (attributionVerbIndex < 1) {
+  if (accordingTo?.[1] !== undefined) {
+    const subjectTokens = [...materialTokens(accordingTo[1])];
+
+    return subjectTokens.length === 0 ? null : subjectTokens;
+  }
+
+  const tokens = textTokens(text);
+  const thatIndex = tokens.indexOf("que");
+
+  if (thatIndex < 3) {
     return null;
   }
 
   const subjectTokens = tokens
-    .slice(0, attributionVerbIndex)
+    .slice(0, thatIndex - 1)
     .filter((token) => !lowInformationTokens.has(token));
 
   return subjectTokens.length === 0 ? null : subjectTokens;
@@ -151,9 +152,17 @@ const representationPreservesAttribution = (input: {
   }
 
   const neutralTokens = new Set(textTokens(input.neutralText));
+  const normalizedNeutralText = normalizedText(input.neutralText);
+  const thatIndex = textTokens(input.neutralText).indexOf("que");
+  const finalSubjectIndex = Math.max(
+    ...subjectTokens.map((token) => textTokens(input.neutralText).lastIndexOf(token)),
+  );
+  const preservesAccordingTo = normalizedNeutralText.startsWith("segun ");
+  const preservesDeclarativeAttribution =
+    finalSubjectIndex >= 0 && thatIndex >= finalSubjectIndex + 2;
 
   return subjectTokens.every((token) => neutralTokens.has(token)) &&
-    [...neutralTokens].some((token) => attributionVerbs.has(token));
+    (preservesAccordingTo || preservesDeclarativeAttribution);
 };
 
 const minimumPreservedTokenCount = (tokenCount: number): number =>
