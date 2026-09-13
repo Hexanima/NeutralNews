@@ -6,7 +6,7 @@ import { TaggedError } from "../types/error.js";
 import { err, ok, type Result } from "../types/result.js";
 import type { UUID } from "../types/uuid.js";
 
-export const rewriteOutputSchemaVersion = "1";
+export const rewriteOutputSchemaVersion = "2";
 
 export interface RewriteStructuredChange {
   id: UUID;
@@ -16,9 +16,15 @@ export interface RewriteStructuredChange {
   justification: string;
 }
 
+export interface RewriteStructuredPosition {
+  sourceSegmentIds: readonly string[];
+  neutralText: string;
+}
+
 export interface RewriteStructuredOutput {
   neutralText: string;
   changes: readonly RewriteStructuredChange[];
+  positions: readonly RewriteStructuredPosition[];
 }
 
 export class InvalidRewriteStructuredOutputError extends TaggedError<"InvalidRewriteStructuredOutput"> {
@@ -102,10 +108,51 @@ const parseChange = (
   });
 };
 
+const segmentIdPattern = /^segment-[1-9][0-9]*$/;
+
+const parseSourceSegmentIds = (
+  value: unknown,
+  field: string,
+): Result<readonly string[], InvalidRewriteStructuredOutputError> => {
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.some((id) => typeof id !== "string" || !segmentIdPattern.test(id))
+  ) {
+    return invalid(field);
+  }
+
+  return ok(value as readonly string[]);
+};
+
+const parsePosition = (
+  value: unknown,
+  field: string,
+): Result<RewriteStructuredPosition, InvalidRewriteStructuredOutputError> => {
+  if (!isExactRecord(value, ["sourceSegmentIds", "neutralText"])) {
+    return invalid(field);
+  }
+
+  const sourceSegmentIds = parseSourceSegmentIds(
+    value.sourceSegmentIds,
+    `${field}.sourceSegmentIds`,
+  );
+  const neutralText = parseText(value.neutralText, `${field}.neutralText`);
+
+  if (!sourceSegmentIds.ok || !neutralText.ok) {
+    return invalid(field);
+  }
+
+  return ok({
+    sourceSegmentIds: sourceSegmentIds.value,
+    neutralText: neutralText.value,
+  });
+};
+
 export const parseRewriteStructuredOutput = (
   value: unknown,
 ): Result<RewriteStructuredOutput, InvalidRewriteStructuredOutputError> => {
-  if (!isExactRecord(value, ["neutralText", "changes"])) {
+  if (!isExactRecord(value, ["neutralText", "changes", "positions"])) {
     return invalid("root");
   }
 
@@ -115,17 +162,29 @@ export const parseRewriteStructuredOutput = (
     return invalid("changes");
   }
 
+  if (!Array.isArray(value.positions)) {
+    return invalid("positions");
+  }
+
   const changes = value.changes.map((change, index) =>
     parseChange(change, `changes[${index}]`),
   );
+  const positions = value.positions.map((position, index) =>
+    parsePosition(position, `positions[${index}]`),
+  );
 
-  if (!neutralText.ok || changes.some((change) => !change.ok)) {
+  if (
+    !neutralText.ok ||
+    changes.some((change) => !change.ok) ||
+    positions.some((position) => !position.ok)
+  ) {
     return invalid("root");
   }
 
   return ok({
     neutralText: neutralText.value,
     changes: changes.flatMap((change) => change.ok ? [change.value] : []),
+    positions: positions.flatMap((position) => position.ok ? [position.value] : []),
   });
 };
 
@@ -135,7 +194,7 @@ const nonEmptyTextSchema = { type: "string", pattern: "\\S" } as const;
 export const rewriteOutputSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["neutralText", "changes"],
+  required: ["neutralText", "changes", "positions"],
   properties: {
     neutralText: nonEmptyTextSchema,
     changes: {
@@ -150,6 +209,22 @@ export const rewriteOutputSchema = {
           originalText: nonEmptyTextSchema,
           neutralText: nonEmptyTextSchema,
           justification: nonEmptyTextSchema,
+        },
+      },
+    },
+    positions: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["sourceSegmentIds", "neutralText"],
+        properties: {
+          sourceSegmentIds: {
+            type: "array",
+            minItems: 1,
+            items: { type: "string", pattern: segmentIdPattern.source },
+          },
+          neutralText: nonEmptyTextSchema,
         },
       },
     },
