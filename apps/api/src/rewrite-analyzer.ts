@@ -49,6 +49,10 @@ const finiteVerbEndings = [
   "isteis", "iste", "ó",
 ] as const;
 const presentTenseVerbEndings = ["a", "e", "an", "en"] as const;
+const neutralMaterialEquivalences = [
+  ["lanz", "present"],
+  ["oficialism", "bloque", "oficialist"],
+] as const;
 
 export interface RewriteAnalyzer {
   rewrite: (input: {
@@ -144,11 +148,18 @@ const hasFiniteVerb = (text: string): boolean => {
 
   return tokens.some((token) => finiteVerbEndings.some((ending) => token.endsWith(ending))) ||
     tokens.some((token, index) =>
-      index >= 2 &&
-      index < tokens.length - 1 &&
+      index >= 1 &&
+      token.length >= 4 &&
       presentTenseVerbEndings.some((ending) => token.endsWith(ending))
     );
 };
+
+const areEquivalentMaterialTokens = (sourceToken: string, neutralToken: string): boolean =>
+  sourceToken === neutralToken ||
+  neutralMaterialEquivalences.some((equivalence) =>
+    equivalence.some((sourceRoot) => sourceToken.startsWith(sourceRoot)) &&
+    equivalence.some((neutralRoot) => neutralToken.startsWith(neutralRoot)),
+  );
 
 const attributionSubjectTokens = (text: string): readonly string[] | null => {
   const accordingTo = text.match(/^\s*según\s+([^,;:.!?]+)/iu);
@@ -248,7 +259,11 @@ const representationPreservesSegmentContent = (input: {
   }
 
   const neutralTokens = materialTokens(input.neutralText);
-  const preservedTokenCount = [...sourceTokens].filter((token) => neutralTokens.has(token)).length;
+  const preservedTokenCount = [...sourceTokens].filter((sourceToken) =>
+    [...neutralTokens].some((neutralToken) =>
+      areEquivalentMaterialTokens(sourceToken, neutralToken),
+    ),
+  ).length;
 
   return preservedTokenCount >= minimumPreservedTokenCount(sourceTokens.size);
 };
@@ -261,10 +276,12 @@ const representationDoesNotAddMaterialContext = (input: {
   const normalizedSourceText = normalizedText(input.sourceSegment.text);
   const sourceHasAttribution = textTokens(input.sourceSegment.text).some(isAttributionVerb);
 
-  return materialTokenList(input.neutralText).every((token) =>
-    sourceTokens.has(token) ||
-    (sourceHasAttribution && isAttributionVerb(token)) ||
-    (token === "vuelve" && normalizedSourceText.includes("establece que"))
+  return materialTokenList(input.neutralText).every((neutralToken) =>
+    [...sourceTokens].some((sourceToken) =>
+      areEquivalentMaterialTokens(sourceToken, neutralToken),
+    ) ||
+    (sourceHasAttribution && isAttributionVerb(neutralToken)) ||
+    (neutralToken === "vuelve" && normalizedSourceText.includes("establece que"))
   );
 };
 

@@ -160,6 +160,21 @@ describe("rewrite analyzer", () => {
     });
   });
 
+  it("accepts a neutral rephrasing with equivalent material terms", async () => {
+    const text = "El polémico proyecto fue lanzado por el oficialismo.";
+    const neutralText = "El proyecto fue presentado por el bloque oficialista.";
+    const { analyzer } = analyzerFor({
+      neutralText,
+      changes: [],
+      positions: [{ sourceSegmentIds: ["segment-1"], neutralText }],
+    });
+
+    await expect(analyzer.rewrite({ text })).resolves.toEqual({
+      ok: true,
+      value: { neutralText, changes: [], warnings: [] },
+    });
+  });
+
   it("rejects an omitted position after a contrastive clause", async () => {
     const text = "El Gobierno propuso reducir impuestos, pero la oposición afirmó que afectaría la recaudación.";
     const neutralText = "El Gobierno propuso reducir impuestos.";
@@ -208,6 +223,21 @@ describe("rewrite analyzer", () => {
   it("rejects an omitted position after a coordinated present-tense clause", async () => {
     const text = "El diputado vota a favor y la senadora vota en contra.";
     const neutralText = "El diputado vota a favor.";
+    const { analyzer } = analyzerFor({
+      neutralText,
+      changes: [],
+      positions: [{ sourceSegmentIds: ["segment-1"], neutralText }],
+    });
+
+    await expect(analyzer.rewrite({ text })).resolves.toEqual({
+      ok: false,
+      error: expect.any(AiInvalidStructuredOutputError),
+    });
+  });
+
+  it("rejects an omitted position after a coordinated present-tense clause with one-word subjects", async () => {
+    const text = "Diputados apoyan y senadoras discrepan.";
+    const neutralText = "Diputados apoyan.";
     const { analyzer } = analyzerFor({
       neutralText,
       changes: [],
