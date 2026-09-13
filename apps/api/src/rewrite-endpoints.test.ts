@@ -10,9 +10,12 @@ import {
   AiProviderRejectedError,
   ExternalPortError,
   PortLimitExceededError,
+  createFakeAiGenerationPort,
   createRewriteResult,
   err,
+  initialAiProviderCatalogSnapshot,
   ok,
+  type EffectiveAiProviderConfiguration,
   type Result,
   type RewriteResult,
   type TaggedError,
@@ -20,6 +23,7 @@ import {
 
 import { createApp, loadApiConfig } from "./app.js";
 import { createSession } from "./authentication.js";
+import { createRewriteAnalyzer } from "./rewrite-analyzer.js";
 import type { RewriteRequestOptions } from "./rewrite-endpoints.js";
 
 const temporaryDirectories: string[] = [];
@@ -41,6 +45,18 @@ const rewrite = createRewriteResult({
 if (!rewrite.ok) {
   throw rewrite.error;
 }
+
+const aiConfiguration: EffectiveAiProviderConfiguration = {
+  schemaVersion: 1,
+  configurationVersion: 1,
+  providers: initialAiProviderCatalogSnapshot.providers,
+  models: initialAiProviderCatalogSnapshot.models,
+  activeSelection: { providerId: "openai", modelId: "gpt-5.6-terra" },
+  credentialReferences: [],
+  providerOverrides: [],
+  modelOverrides: [],
+  modelSynchronizations: [],
+};
 
 interface RewriteRequestTestOptions {
   rewriteRequestOptions: RewriteRequestOptions;
@@ -126,6 +142,31 @@ describe("rewrite endpoint", () => {
       error: { code: "InvalidRewriteText" },
     });
     expect(calls).toEqual([]);
+  });
+
+  it("returns a validation error when escaped text exceeds the prompt byte limit", async () => {
+    const aiProvider = createFakeAiGenerationPort({ output: {} });
+    const analyzer = createRewriteAnalyzer({
+      aiProvider,
+      configurationRepository: {
+        getEffectiveConfiguration: async () => ok(aiConfiguration),
+      },
+    });
+    const response = await requestRewrite(
+      await createEnvironment(),
+      { text: '"'.repeat(16 * 1024) },
+      {
+        rewriteRequestOptions: {
+          rewrite: async ({ text, signal }) => analyzer.rewrite({ text, options: { signal } }),
+        },
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: { code: "InvalidRewriteText" },
+    });
+    expect(aiProvider.calls.generateStructuredResponse).toEqual([]);
   });
 
   it("returns a valid rewrite result for accepted text", async () => {
