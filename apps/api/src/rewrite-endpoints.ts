@@ -100,12 +100,8 @@ const sendRewriteError = (response: ServerResponse, error: unknown) => {
     return;
   }
 
-  if (error instanceof PortLimitExceededError) {
-    sendInvalidText(response);
-    return;
-  }
-
   if (
+    error instanceof PortLimitExceededError ||
     error instanceof ExternalPortError ||
     error instanceof AiProviderRejectedError ||
     error instanceof AiCredentialUnavailableError ||

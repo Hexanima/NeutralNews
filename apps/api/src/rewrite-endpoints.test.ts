@@ -171,6 +171,7 @@ describe("rewrite endpoint", () => {
     new ExternalPortError("openai.responses.create", "PermanentFailure"),
     new AiProviderRejectedError("openai", "openai.responses.create", 401),
     new AiCredentialUnavailableError("openai", "api_key"),
+    new PortLimitExceededError("openai.responses.create", "maxItems"),
   ])("returns a sanitized provider error for %s", async (failure) => {
     const pastedText = "texto privado que no debe aparecer en el error";
     const response = await requestRewrite(
